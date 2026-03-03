@@ -1,0 +1,191 @@
+{
+  "projectType": "framework",
+  "projectName": "Routa",
+  "projectDescription": "Multi-agent coordination platform that orchestrates AI agents through MCP, ACP, and A2A protocols for complex development workflows",
+  "theme": "aspen",
+  "primaryColor": "#2563eb",
+  "lightColor": "#3b82f6",
+  "darkColor": "#1e40af",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/multi-agent-coordination",
+              "concepts/specialist-roles",
+              "concepts/task-orchestration",
+              "concepts/protocols"
+            ]
+          },
+          {
+            "group": "Protocols",
+            "pages": [
+              "protocols/mcp",
+              "protocols/acp",
+              "protocols/a2a"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/desktop-app",
+              "guides/web-deployment",
+              "guides/docker-deployment",
+              "guides/custom-specialists",
+              "guides/custom-mcp-servers",
+              "guides/github-virtual-workspace",
+              "guides/workflows"
+            ]
+          },
+          {
+            "group": "Specialists",
+            "pages": [
+              "specialists/overview",
+              "specialists/routa-coordinator",
+              "specialists/crafter-implementor",
+              "specialists/gate-verifier",
+              "specialists/developer",
+              "specialists/creating-custom"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/dual-backend",
+              "development/database",
+              "development/testing",
+              "development/contributing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "REST API",
+            "pages": [
+              "api/overview",
+              "api/health",
+              "api/agents",
+              "api/tasks",
+              "api/notes",
+              "api/workspaces",
+              "api/skills",
+              "api/sessions"
+            ]
+          },
+          {
+            "group": "MCP Tools",
+            "pages": [
+              "api/mcp-tools/overview",
+              "api/mcp-tools/agent-tools",
+              "api/mcp-tools/task-tools",
+              "api/mcp-tools/note-tools",
+              "api/mcp-tools/workspace-tools"
+            ]
+          },
+          {
+            "group": "ACP",
+            "pages": [
+              "api/acp/overview",
+              "api/acp/runtime",
+              "api/acp/registry",
+              "api/acp/install"
+            ]
+          },
+          {
+            "group": "A2A",
+            "pages": [
+              "api/a2a/overview",
+              "api/a2a/sessions",
+              "api/a2a/card",
+              "api/a2a/rpc"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI",
+        "groups": [
+          {
+            "group": "Command Reference",
+            "pages": [
+              "cli/overview",
+              "cli/agent",
+              "cli/task",
+              "cli/chat",
+              "cli/server"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-agent coordination with specialized roles (Coordinator, Implementor, Verifier, Developer)",
+    "Multi-protocol architecture supporting MCP, ACP, and A2A for agent communication",
+    "Dual backend (Next.js + Rust) for web and desktop deployments",
+    "Task orchestration with delegation, dependencies, and parallel execution",
+    "Custom specialist creation via UI, API, or Markdown files",
+    "Custom MCP server integration (stdio/http/sse)",
+    "GitHub virtual workspace for remote repository browsing",
+    "ACP registry for discovering and installing pre-configured agents",
+    "Real-time collaboration with CRDT-based note system",
+    "OpenCode-compatible skill discovery and loading",
+    "CLI tool for command-line agent management",
+    "Support for Claude Code, OpenCode, Codex, Gemini, and custom providers"
+  ],
+  "publicApiSurface": [
+    "POST /api/agents - Create agent",
+    "GET /api/agents - List agents",
+    "GET /api/agents/{id} - Get agent details",
+    "POST /api/tasks - Create task",
+    "GET /api/tasks - List tasks",
+    "PUT /api/tasks/{id}/status - Update task status",
+    "POST /api/notes - Create note",
+    "GET /api/notes - List notes",
+    "PUT /api/notes/{workspaceId}/{noteId} - Update note",
+    "POST /api/workspaces - Create workspace",
+    "GET /api/workspaces - List workspaces",
+    "GET /api/skills - List skills",
+    "POST /api/skills/clone - Clone skill repository",
+    "POST /api/acp - Start ACP agent process",
+    "GET /api/acp/registry - Get ACP registry entries",
+    "POST /api/acp/install - Install ACP agent",
+    "GET /api/mcp/tools - List MCP coordination tools",
+    "POST /api/a2a/sessions - Create A2A session",
+    "GET /api/a2a/card - Get agent card",
+    "POST /api/a2a/rpc - Execute A2A RPC call",
+    "list_agents - MCP tool to list agents",
+    "create_agent - MCP tool to create agent",
+    "delegate_task - MCP tool to delegate task",
+    "delegate_task_to_agent - MCP tool to delegate task to new agent",
+    "send_message_to_agent - MCP tool to send inter-agent message",
+    "read_agent_conversation - MCP tool to read agent conversation",
+    "report_to_parent - MCP tool to report completion to parent",
+    "create_note - MCP tool to create note",
+    "read_note - MCP tool to read note",
+    "set_note_content - MCP tool to set note content (auto-creates tasks)",
+    "append_to_note - MCP tool to append to note",
+    "convert_task_blocks - MCP tool to convert @@@task blocks",
+    "routa agent list - CLI command to list agents",
+    "routa agent create - CLI command to create agent",
+    "routa task list - CLI command to list tasks",
+    "routa task create - CLI command to create task",
+    "routa chat - CLI command for interactive chat",
+    "routa server - CLI command to start Rust server"
+  ]
+}
