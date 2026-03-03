@@ -1,0 +1,516 @@
+---
+title: Workflow Command
+description: Run YAML-defined agent workflows with the Routa CLI
+---
+
+## Overview
+
+The `routa workflow` command executes YAML-defined workflows — automated sequences of agent tasks with conditional logic, parallel execution, and error handling.
+
+## Usage
+
+```bash
+routa workflow run [OPTIONS] <FILE>
+```
+
+## Options
+
+<ParamField path="file" type="string" required>
+  Path to the workflow YAML file
+</ParamField>
+
+<ParamField path="--verbose" type="boolean">
+  Enable verbose output (show prompts and responses)
+</ParamField>
+
+<ParamField path="--specialist-dir" type="string">
+  Directory containing custom specialist definitions
+</ParamField>
+
+<ParamField path="--trigger-payload" type="string">
+  JSON payload to pass to the workflow trigger
+</ParamField>
+
+## Example Usage
+
+### Basic Workflow Execution
+
+```bash
+routa workflow run .routa/workflows/pr-review.yaml
+```
+
+**Output:**
+
+```
+📄 Loaded workflow: PR Review (pr-review.yaml)
+   3 step(s), trigger: manual
+
+🔄 Step 1/3: analyze-changes
+   ✓ Completed in 45s
+
+🔄 Step 2/3: run-tests
+   ✓ Completed in 120s
+
+🔄 Step 3/3: post-comment
+   ✓ Completed in 5s
+
+🎉 Workflow completed successfully!
+```
+
+### Verbose Mode
+
+See detailed agent prompts and responses:
+
+```bash
+routa workflow run --verbose .routa/workflows/deployment.yaml
+```
+
+### Custom Specialist Directory
+
+Use custom specialist definitions:
+
+```bash
+routa workflow run \
+  --specialist-dir ~/my-specialists \
+  .routa/workflows/custom-flow.yaml
+```
+
+### With Trigger Payload
+
+Pass data to the workflow:
+
+```bash
+routa workflow run \
+  --trigger-payload '{"pr_number": 123, "branch": "feature/auth"}' \
+  .routa/workflows/pr-review.yaml
+```
+
+## Workflow File Format
+
+Workflows are defined in YAML with this structure:
+
+```yaml
+name: PR Review Workflow
+description: Automated code review for pull requests
+version: "1.0"
+
+trigger:
+  type: manual  # or: webhook, schedule, event
+
+variables:
+  repo_path: ${REPO_PATH:-/home/user/project}
+  pr_number: ${trigger.pr_number}
+
+steps:
+  - name: analyze-changes
+    specialist: developer
+    model_tier: smart
+    prompt: |
+      Review the changes in PR #{{ variables.pr_number }}.
+      Analyze for:
+      - Code quality issues
+      - Security vulnerabilities
+      - Performance concerns
+    condition: ${trigger.pr_number != null}
+    
+  - name: run-tests
+    specialist: developer
+    model_tier: balanced
+    prompt: Run the full test suite and report any failures
+    retry:
+      max_attempts: 3
+      backoff: exponential
+    
+  - name: post-comment
+    specialist: developer
+    model_tier: fast
+    prompt: Post a summary comment to PR #{{ variables.pr_number }}
+    depends_on:
+      - analyze-changes
+      - run-tests
+
+on_error:
+  - name: notify-failure
+    specialist: developer
+    prompt: Post a failure notification
+```
+
+## Workflow Features
+
+### Variable Substitution
+
+Reference variables and environment variables:
+
+```yaml
+variables:
+  project: ${PROJECT_NAME}
+  branch: ${trigger.branch:-main}
+  
+steps:
+  - name: checkout
+    prompt: Checkout branch {{ variables.branch }}
+```
+
+### Conditional Execution
+
+Run steps based on conditions:
+
+```yaml
+steps:
+  - name: deploy-prod
+    prompt: Deploy to production
+    condition: ${variables.branch == "main"}
+    
+  - name: deploy-staging
+    prompt: Deploy to staging
+    condition: ${variables.branch != "main"}
+```
+
+### Parallel Execution
+
+Run multiple steps concurrently:
+
+```yaml
+steps:
+  - name: frontend-tests
+    parallel_group: tests
+    prompt: Run frontend tests
+    
+  - name: backend-tests
+    parallel_group: tests
+    prompt: Run backend tests
+    
+  - name: integration-tests
+    parallel_group: tests
+    prompt: Run integration tests
+```
+
+### Error Handling
+
+Define retry logic and error handlers:
+
+```yaml
+steps:
+  - name: flaky-operation
+    prompt: Perform network operation
+    retry:
+      max_attempts: 3
+      backoff: exponential
+      backoff_multiplier: 2
+      
+on_error:
+  - name: cleanup
+    prompt: Clean up resources
+  - name: notify
+    prompt: Send failure notification
+```
+
+### Dependencies
+
+Specify step execution order:
+
+```yaml
+steps:
+  - name: build
+    prompt: Build the application
+    
+  - name: test
+    prompt: Run tests
+    depends_on: [build]
+    
+  - name: deploy
+    prompt: Deploy to production
+    depends_on: [build, test]
+```
+
+## Example Workflows
+
+### PR Review Workflow
+
+```yaml
+name: Pull Request Review
+description: Automated code review for GitHub PRs
+version: "1.0"
+
+trigger:
+  type: webhook
+
+variables:
+  pr_number: ${trigger.pr_number}
+  base_branch: ${trigger.base_branch}
+
+steps:
+  - name: fetch-changes
+    specialist: developer
+    model_tier: fast
+    prompt: |
+      Fetch the diff for PR #{{ variables.pr_number }}
+      Compare {{ variables.base_branch }} with the PR branch
+      
+  - name: security-scan
+    specialist: developer
+    model_tier: smart
+    prompt: |
+      Scan the changes for security vulnerabilities:
+      - SQL injection
+      - XSS vulnerabilities
+      - Exposed secrets
+      - Dependency vulnerabilities
+    parallel_group: analysis
+    
+  - name: code-quality
+    specialist: developer
+    model_tier: balanced
+    prompt: |
+      Review code quality:
+      - Coding standards
+      - Best practices
+      - Code duplication
+      - Complexity metrics
+    parallel_group: analysis
+    
+  - name: generate-report
+    specialist: developer
+    model_tier: smart
+    prompt: |
+      Generate a comprehensive review report combining:
+      - Security scan results
+      - Code quality findings
+      - Recommendations
+      Post as PR comment
+    depends_on:
+      - security-scan
+      - code-quality
+```
+
+**Run it:**
+
+```bash
+export REPO_PATH=/home/user/my-project
+routa workflow run \
+  --trigger-payload '{"pr_number": 42, "base_branch": "main"}' \
+  .routa/workflows/pr-review.yaml
+```
+
+### Deployment Workflow
+
+```yaml
+name: Production Deployment
+description: Deploy application to production with checks
+version: "1.0"
+
+trigger:
+  type: manual
+
+variables:
+  environment: production
+  version: ${VERSION}
+
+steps:
+  - name: pre-flight-checks
+    specialist: developer
+    model_tier: smart
+    prompt: |
+      Verify deployment prerequisites:
+      - All tests passing
+      - No critical bugs open
+      - Database migrations ready
+      
+  - name: backup-database
+    specialist: developer
+    model_tier: balanced
+    prompt: Create database backup before deployment
+    depends_on: [pre-flight-checks]
+    
+  - name: deploy-application
+    specialist: developer
+    model_tier: balanced
+    prompt: |
+      Deploy version {{ variables.version }} to {{ variables.environment }}
+      Use blue-green deployment strategy
+    depends_on: [backup-database]
+    retry:
+      max_attempts: 2
+      
+  - name: smoke-tests
+    specialist: developer
+    model_tier: fast
+    prompt: Run smoke tests on production
+    depends_on: [deploy-application]
+    
+  - name: notify-success
+    specialist: developer
+    model_tier: fast
+    prompt: Send deployment success notification
+    depends_on: [smoke-tests]
+
+on_error:
+  - name: rollback
+    prompt: Rollback to previous version
+  - name: notify-failure
+    prompt: Send deployment failure alert
+```
+
+**Run it:**
+
+```bash
+export VERSION=v2.1.0
+routa workflow run .routa/workflows/deploy.yaml
+```
+
+### Scheduled Maintenance Workflow
+
+```yaml
+name: Daily Maintenance
+description: Automated maintenance tasks
+version: "1.0"
+
+trigger:
+  type: schedule
+  cron: "0 2 * * *"  # 2 AM daily
+
+steps:
+  - name: cleanup-logs
+    specialist: developer
+    model_tier: fast
+    prompt: Delete log files older than 30 days
+    parallel_group: maintenance
+    
+  - name: optimize-database
+    specialist: developer
+    model_tier: balanced
+    prompt: Run database optimization and vacuum
+    parallel_group: maintenance
+    
+  - name: backup-data
+    specialist: developer
+    model_tier: balanced
+    prompt: Create incremental backup
+    depends_on:
+      - cleanup-logs
+      - optimize-database
+      
+  - name: generate-report
+    specialist: developer
+    model_tier: fast
+    prompt: |
+      Generate maintenance report:
+      - Disk space freed
+      - Database size after optimization
+      - Backup status
+    depends_on: [backup-data]
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use appropriate model tiers">
+    - **Smart tier** for complex analysis, planning, code review
+    - **Balanced tier** for most implementation tasks
+    - **Fast tier** for simple operations, notifications, cleanup
+  </Accordion>
+  
+  <Accordion title="Handle errors gracefully">
+    Always define `on_error` handlers for critical workflows:
+    
+    ```yaml
+    on_error:
+      - name: cleanup-resources
+        prompt: Clean up any partially created resources
+      - name: notify-team
+        prompt: Alert the team of workflow failure
+    ```
+  </Accordion>
+  
+  <Accordion title="Use parallel groups for independent tasks">
+    Group independent tasks to run concurrently:
+    
+    ```yaml
+    steps:
+      - name: lint
+        parallel_group: checks
+      - name: type-check
+        parallel_group: checks
+      - name: security-scan
+        parallel_group: checks
+    ```
+  </Accordion>
+  
+  <Accordion title="Leverage variables for reusability">
+    Make workflows reusable with variables:
+    
+    ```yaml
+    variables:
+      environment: ${ENVIRONMENT:-staging}
+      version: ${VERSION}
+      
+    steps:
+      - prompt: Deploy {{ variables.version }} to {{ variables.environment }}
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Workflow fails to start">
+    **Check YAML syntax:**
+    ```bash
+    # Validate YAML
+    python -c "import yaml; yaml.safe_load(open('.routa/workflows/my-flow.yaml'))"
+    ```
+    
+    **Verify file path:**
+    ```bash
+    ls -la .routa/workflows/my-flow.yaml
+    ```
+  </Accordion>
+  
+  <Accordion title="Step fails with specialist not found">
+    **List available specialists:**
+    ```bash
+    routa workflow list-specialists
+    ```
+    
+    **Use custom specialist directory:**
+    ```bash
+    routa workflow run --specialist-dir ~/specialists my-flow.yaml
+    ```
+  </Accordion>
+  
+  <Accordion title="Variables not substituting">
+    **Export environment variables:**
+    ```bash
+    export VERSION=v1.0.0
+    export ENVIRONMENT=production
+    routa workflow run my-flow.yaml
+    ```
+    
+    **Pass trigger payload:**
+    ```bash
+    routa workflow run \
+      --trigger-payload '{"version": "v1.0.0"}' \
+      my-flow.yaml
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Workflow Guide" icon="book" href="/guides/workflows">
+    Complete guide to workflow configuration
+  </Card>
+  
+  <Card title="Custom Specialists" icon="user-gear" href="/guides/custom-specialists">
+    Create custom specialist definitions
+  </Card>
+  
+  <Card title="Delegate Command" icon="share-nodes" href="/cli/delegate">
+    Delegate tasks programmatically
+  </Card>
+  
+  <Card title="Task Orchestration" icon="diagram-project" href="/concepts/task-orchestration">
+    Learn about task coordination patterns
+  </Card>
+</CardGroup>

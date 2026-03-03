@@ -1,0 +1,281 @@
+---
+title: Delegate Command
+description: Delegate tasks to specialist agents with ACP spawning
+---
+
+## Overview
+
+The `routa delegate` command delegates a task to a specialist agent by spawning a real ACP agent process. This is the CLI equivalent of the `delegate_task_to_agent` MCP tool.
+
+## Usage
+
+```bash
+routa delegate [OPTIONS]
+```
+
+## Options
+
+<ParamField path="--task-id" type="string" required>
+  UUID of the task to delegate (from `routa task create`)
+</ParamField>
+
+<ParamField path="--caller-agent-id" type="string" required>
+  Agent ID of the delegating agent (coordinator)
+</ParamField>
+
+<ParamField path="--caller-session-id" type="string" required>
+  Session ID of the delegating agent
+</ParamField>
+
+<ParamField path="--workspace-id" type="string" default="default">
+  Workspace ID for the task
+</ParamField>
+
+<ParamField path="--specialist" type="string" required>
+  Specialist type: `CRAFTER` (implementation), `GATE` (verification), or `DEVELOPER` (solo)
+</ParamField>
+
+<ParamField path="--provider" type="string">
+  ACP provider to use (e.g., `opencode`, `claude`, `copilot`, `gemini`)
+</ParamField>
+
+<ParamField path="--cwd" type="string">
+  Working directory for the agent
+</ParamField>
+
+<ParamField path="--wait-mode" type="string" default="immediate">
+  Notification mode: `immediate` (notify after each agent) or `after_all` (notify when all complete)
+</ParamField>
+
+## Example Usage
+
+### Basic Delegation
+
+```bash
+# Create a task first
+TASK_ID=$(routa task create \
+  --title "Implement user authentication" \
+  --objective "Add JWT-based authentication to the API" \
+  --workspace-id default | jq -r '.result.task.id')
+
+# Delegate to a CRAFTER agent
+routa delegate \
+  --task-id $TASK_ID \
+  --caller-agent-id "coord-123" \
+  --caller-session-id "session-456" \
+  --workspace-id default \
+  --specialist CRAFTER \
+  --provider opencode
+```
+
+**Output:**
+
+```json
+{
+  "success": true,
+  "taskId": "dda97509-b414-4c50-9835-73a1ec2f1234",
+  "agentId": "agent_abc123",
+  "sessionId": "session_xyz789",
+  "specialist": "CRAFTER",
+  "message": "Task delegated to CRAFTER agent"
+}
+```
+
+### Wave Delegation
+
+Delegate multiple tasks to different agents:
+
+```bash
+# Create multiple tasks
+TASK1=$(routa task create --title "Frontend" --objective "Build UI" | jq -r '.result.task.id')
+TASK2=$(routa task create --title "Backend" --objective "Build API" | jq -r '.result.task.id')
+TASK3=$(routa task create --title "Database" --objective "Design schema" | jq -r '.result.task.id')
+
+# Delegate all with after_all wait mode
+routa delegate --task-id $TASK1 --specialist CRAFTER --wait-mode after_all \
+  --caller-agent-id coord-123 --caller-session-id session-456
+
+routa delegate --task-id $TASK2 --specialist CRAFTER --wait-mode after_all \
+  --caller-agent-id coord-123 --caller-session-id session-456
+
+routa delegate --task-id $TASK3 --specialist CRAFTER --wait-mode after_all \
+  --caller-agent-id coord-123 --caller-session-id session-456
+
+# Coordinator will be notified once all three complete
+```
+
+### Verification Delegation
+
+```bash
+# Delegate for code review after implementation
+VERIFY_TASK=$(routa task create \
+  --title "Verify authentication implementation" \
+  --objective "Review and test the auth code" | jq -r '.result.task.id')
+
+routa delegate \
+  --task-id $VERIFY_TASK \
+  --specialist GATE \
+  --caller-agent-id coord-123 \
+  --caller-session-id session-456 \
+  --workspace-id default
+```
+
+## Wait Modes
+
+### Immediate Mode
+
+The coordinator is notified as soon as each agent completes:
+
+```bash
+routa delegate --task-id $TASK_ID --specialist CRAFTER --wait-mode immediate \
+  --caller-agent-id coord-123 --caller-session-id session-456
+```
+
+**Use when:**
+- You want to react to each completion individually
+- Tasks are independent
+- You need real-time progress updates
+
+### After All Mode
+
+The coordinator is notified only when all agents in the delegation group complete:
+
+```bash
+routa delegate --task-id $TASK_ID --specialist CRAFTER --wait-mode after_all \
+  --caller-agent-id coord-123 --caller-session-id session-456
+```
+
+**Use when:**
+- Delegating multiple parallel tasks (a "wave")
+- You want to verify all together after completion
+- Tasks form a logical batch
+
+## Specialist Types
+
+<Tabs>
+  <Tab title="CRAFTER">
+    **Implementation specialist** — executes coding tasks with minimal scope.
+    
+    - Stays within task boundaries
+    - No refactoring or scope creep
+    - Coordinates with other agents to avoid conflicts
+    - Reports completion to parent coordinator
+    
+    ```bash
+    routa delegate --task-id $TASK_ID --specialist CRAFTER
+    ```
+  </Tab>
+  
+  <Tab title="GATE">
+    **Verification specialist** — reviews and validates completed work.
+    
+    - Runs verification commands from task
+    - Checks against acceptance criteria
+    - Returns verdict: APPROVED, NOT_APPROVED, or BLOCKED
+    - Provides structured verification report
+    
+    ```bash
+    routa delegate --task-id $VERIFY_ID --specialist GATE
+    ```
+  </Tab>
+  
+  <Tab title="DEVELOPER">
+    **Solo specialist** — plans and implements independently.
+    
+    - Combines planning and execution
+    - No delegation to other agents
+    - Self-verifies work
+    - Good for small, isolated tasks
+    
+    ```bash
+    routa delegate --task-id $TASK_ID --specialist DEVELOPER
+    ```
+  </Tab>
+</Tabs>
+
+## Provider Selection
+
+Specify which ACP provider to use for the agent:
+
+```bash
+# Use Claude Code
+routa delegate --task-id $TASK_ID --specialist CRAFTER --provider claude
+
+# Use OpenCode (default)
+routa delegate --task-id $TASK_ID --specialist CRAFTER --provider opencode
+
+# Use GitHub Copilot
+routa delegate --task-id $TASK_ID --specialist CRAFTER --provider copilot
+
+# Use Gemini
+routa delegate --task-id $TASK_ID --specialist CRAFTER --provider gemini
+```
+
+## Complete Workflow Example
+
+```bash
+#!/bin/bash
+
+# 1. Create workspace
+WORKSPACE_ID=$(routa workspace create --name "Auth Module" | jq -r '.result.workspace.id')
+
+# 2. Create coordinator agent
+COORD_ID=$(routa agent create --name "Coordinator" --role ROUTA --workspace-id $WORKSPACE_ID | jq -r '.result.agent.id')
+SESSION_ID="session_$(date +%s)"
+
+# 3. Create implementation task
+TASK_ID=$(routa task create \
+  --title "Implement JWT authentication" \
+  --objective "Add JWT token generation and validation" \
+  --workspace-id $WORKSPACE_ID \
+  --scope "auth/ directory only" \
+  | jq -r '.result.task.id')
+
+# 4. Delegate to CRAFTER
+routa delegate \
+  --task-id $TASK_ID \
+  --caller-agent-id $COORD_ID \
+  --caller-session-id $SESSION_ID \
+  --workspace-id $WORKSPACE_ID \
+  --specialist CRAFTER \
+  --provider opencode \
+  --cwd "/home/user/project"
+
+# 5. Monitor progress
+routa task list --workspace-id $WORKSPACE_ID | jq '.result.tasks[] | {title, status, assignedTo}'
+
+# 6. After completion, create verification task
+VERIFY_ID=$(routa task create \
+  --title "Verify authentication" \
+  --objective "Test and review auth implementation" \
+  --workspace-id $WORKSPACE_ID \
+  | jq -r '.result.task.id')
+
+# 7. Delegate to GATE
+routa delegate \
+  --task-id $VERIFY_ID \
+  --caller-agent-id $COORD_ID \
+  --caller-session-id $SESSION_ID \
+  --workspace-id $WORKSPACE_ID \
+  --specialist GATE
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Task Command" icon="list-check" href="/cli/task">
+    Create and manage tasks for delegation
+  </Card>
+  
+  <Card title="Agent Command" icon="users" href="/cli/agent">
+    Monitor delegated agents
+  </Card>
+  
+  <Card title="MCP Tools" icon="toolbox" href="/api/mcp-tools/agent-tools">
+    Use delegate_task_to_agent in MCP context
+  </Card>
+  
+  <Card title="Specialist Roles" icon="user-gear" href="/concepts/specialist-roles">
+    Learn about CRAFTER, GATE, and DEVELOPER
+  </Card>
+</CardGroup>

@@ -138,6 +138,10 @@
               "cli/overview",
               "cli/agent",
               "cli/task",
+              "cli/workspace",
+              "cli/skill",
+              "cli/delegate",
+              "cli/workflow",
               "cli/chat",
               "cli/server"
             ]

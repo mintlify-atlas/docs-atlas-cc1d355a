@@ -1,0 +1,156 @@
+---
+title: Workspace Command
+description: Manage workspaces with the Routa CLI
+---
+
+## Overview
+
+The `routa workspace` command manages workspaces — isolated environments for agent teams to collaborate on projects.
+
+## Usage
+
+```bash
+routa workspace <ACTION>
+```
+
+## Commands
+
+### List Workspaces
+
+List all workspaces in the system:
+
+```bash
+routa workspace list
+```
+
+**Example Output:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "workspaces": [
+      {
+        "id": "default",
+        "title": "Default Workspace",
+        "status": "active",
+        "createdAt": "2024-01-15T10:00:00Z",
+        "updatedAt": "2024-01-15T10:00:00Z"
+      },
+      {
+        "id": "proj-auth",
+        "title": "Authentication Module",
+        "status": "active",
+        "repoPath": "/home/user/projects/auth",
+        "branch": "main",
+        "createdAt": "2024-01-20T14:30:00Z",
+        "updatedAt": "2024-01-20T16:45:00Z"
+      }
+    ]
+  }
+}
+```
+
+### Create Workspace
+
+Create a new workspace:
+
+```bash
+routa workspace create --name "My Project"
+```
+
+**Options:**
+
+- `--name <NAME>` - Workspace title (required)
+
+**Example Output:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "workspace": {
+      "id": "ws_a1b2c3d4",
+      "title": "My Project",
+      "status": "active",
+      "metadata": {},
+      "createdAt": "2024-01-25T09:15:00Z",
+      "updatedAt": "2024-01-25T09:15:00Z"
+    }
+  }
+}
+```
+
+## Workspace Structure
+
+Each workspace contains:
+
+- **Agents** - Team members assigned to the workspace
+- **Tasks** - Work items being tracked
+- **Notes** - Collaborative documentation (Spec, task notes, general notes)
+- **Codebase** - Optional repository path and branch
+
+## Common Workflows
+
+### Creating a Project Workspace
+
+```bash
+# Create workspace
+routa workspace create --name "E-commerce Platform"
+
+# Set the workspace ID for subsequent commands
+export WORKSPACE_ID="ws_a1b2c3d4"
+
+# Create agents in the workspace
+routa agent create --name "Coordinator" --role ROUTA --workspace-id $WORKSPACE_ID
+```
+
+### Working with Multiple Workspaces
+
+```bash
+# List all workspaces
+routa workspace list
+
+# Filter by status (use jq for JSON processing)
+routa workspace list | jq '.result.workspaces[] | select(.status == "active")'
+
+# Get workspace by ID
+routa workspace list | jq '.result.workspaces[] | select(.id == "default")'
+```
+
+## Integration with Other Commands
+
+Most Routa CLI commands accept a `--workspace-id` flag:
+
+```bash
+# Create agent in specific workspace
+routa agent create --name "Dev" --role DEVELOPER --workspace-id proj-auth
+
+# List tasks in workspace
+routa task list --workspace-id proj-auth
+
+# Start chat in workspace context
+routa chat --workspace-id proj-auth
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Agent Commands" icon="users" href="/cli/agent">
+    Create and manage agents in workspaces
+  </Card>
+  
+  <Card title="Task Commands" icon="list-check" href="/cli/task">
+    Track work items within workspaces
+  </Card>
+  
+  <Card title="REST API" icon="code" href="/api/workspaces">
+    Programmatic workspace management
+  </Card>
+  
+  <Card title="Core Concepts" icon="lightbulb" href="/concepts/architecture">
+    Learn about workspace-centric architecture
+  </Card>
+</CardGroup>

@@ -1,0 +1,234 @@
+---
+title: Skill Command
+description: Discover and manage OpenCode-compatible skills
+---
+
+## Overview
+
+The `routa skill` command manages skills — pre-packaged capabilities that agents can use to extend their functionality. Skills are compatible with the OpenCode skill system.
+
+## Usage
+
+```bash
+routa skill <ACTION>
+```
+
+## Commands
+
+### List Skills
+
+List all discovered skills in the system:
+
+```bash
+routa skill list
+```
+
+**Example Output:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "skills": [
+      {
+        "name": "playwright",
+        "version": "1.0.0",
+        "description": "Browser automation and testing with Playwright",
+        "path": "/home/user/.routa/skills/playwright",
+        "entrypoint": "skill.json"
+      },
+      {
+        "name": "figma-export",
+        "version": "0.2.1",
+        "description": "Export Figma designs to code",
+        "path": "/home/user/.routa/skills/figma-export",
+        "entrypoint": "skill.json"
+      }
+    ]
+  }
+}
+```
+
+### Reload Skills
+
+Reload skills from disk (useful after adding new skills manually):
+
+```bash
+routa skill reload
+```
+
+**Example Output:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "message": "Skills reloaded",
+    "count": 5
+  }
+}
+```
+
+## Skill Discovery
+
+Routa discovers skills from these locations:
+
+1. **User directory**: `~/.routa/skills/`
+2. **Project directory**: `.routa/skills/`
+3. **Bundled skills**: Built-in skills packaged with Routa
+
+Skills are auto-discovered when:
+- The server starts
+- You call `routa skill reload`
+- An ACP agent spawns (skills are merged into MCP configuration)
+
+## Skill Structure
+
+A skill is a directory with a `skill.json` manifest:
+
+```
+~/.routa/skills/
+├── playwright/
+│   ├── skill.json        # Skill manifest
+│   ├── index.js          # Implementation
+│   └── README.md
+└── figma-export/
+    ├── skill.json
+    ├── export.py
+    └── requirements.txt
+```
+
+**Example skill.json:**
+
+```json
+{
+  "name": "playwright",
+  "version": "1.0.0",
+  "description": "Browser automation and testing",
+  "author": "Your Name",
+  "repository": "https://github.com/your/skill",
+  "tools": [
+    {
+      "name": "browser_screenshot",
+      "description": "Take a screenshot of a webpage",
+      "parameters": {
+        "url": {
+          "type": "string",
+          "description": "URL to screenshot"
+        }
+      }
+    }
+  ]
+}
+```
+
+## Installing Skills
+
+### From GitHub
+
+Use the REST API to clone skills:
+
+```bash
+curl -X POST http://localhost:3000/api/skills/clone \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://github.com/user/my-skill",
+    "workspaceId": "default"
+  }'
+```
+
+### Manual Installation
+
+1. Create skill directory:
+   ```bash
+   mkdir -p ~/.routa/skills/my-skill
+   cd ~/.routa/skills/my-skill
+   ```
+
+2. Create `skill.json` manifest
+
+3. Reload skills:
+   ```bash
+   routa skill reload
+   ```
+
+## Using Skills with Agents
+
+Skills are automatically available to ACP agents through MCP:
+
+```bash
+# Start chat with skill access
+routa chat --role DEVELOPER --workspace-id default
+
+# Skills are merged into the agent's MCP configuration
+# Agent can discover and use skill tools
+```
+
+## Skill Compatibility
+
+Routa skills are compatible with:
+
+- **OpenCode** - Full compatibility with OpenCode skill format
+- **Claude Code** - Skills exposed as MCP tools
+- **Gemini CLI** - Skills available via ACP bridge
+
+## Common Workflows
+
+### Discovering Available Skills
+
+```bash
+# List all skills
+routa skill list
+
+# Extract skill names with jq
+routa skill list | jq -r '.result.skills[].name'
+
+# Get skill details
+routa skill list | jq '.result.skills[] | select(.name == "playwright")'
+```
+
+### Creating a Custom Skill
+
+```bash
+# Create skill directory
+mkdir -p ~/.routa/skills/my-tool
+cd ~/.routa/skills/my-tool
+
+# Create manifest
+cat > skill.json <<EOF
+{
+  "name": "my-tool",
+  "version": "1.0.0",
+  "description": "My custom tool",
+  "tools": []
+}
+EOF
+
+# Reload to discover
+routa skill reload
+
+# Verify
+routa skill list | grep my-tool
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="REST API" icon="code" href="/api/skills">
+    Programmatic skill management
+  </Card>
+  
+  <Card title="Custom MCP Servers" icon="server" href="/guides/custom-mcp-servers">
+    Integrate custom MCP servers alongside skills
+  </Card>
+  
+  <Card title="ACP Overview" icon="plug" href="/api/acp/overview">
+    Learn how skills integrate with ACP agents
+  </Card>
+  
+  <Card title="GitHub Workflow Guide" icon="book" href="/guides/workflows">
+    Use skills in automated workflows
+  </Card>
+</CardGroup>
