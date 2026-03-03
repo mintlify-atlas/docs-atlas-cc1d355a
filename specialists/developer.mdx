@@ -1,0 +1,558 @@
+---
+title: Developer Specialist
+description: The solo planning and implementation specialist
+icon: user-gear
+---
+
+## Overview
+
+The **Developer** specialist plans and implements work by itself without delegation or sub-agents. It combines the planning capabilities of Routa with the implementation capabilities of Crafter into a single agent.
+
+**Key principle:** Work alone — no delegation, no sub-agents.
+
+## Configuration
+
+```yaml
+id: developer
+name: Developer
+role: DEVELOPER
+defaultModelTier: smart
+source: bundled
+```
+
+See `resources/specialists/developer.md` and `resources/specialists/developer.yaml` for the full definition.
+
+<Note>
+Developer uses the `smart` model tier because it handles both planning and implementation, requiring more reasoning capability.
+</Note>
+
+## When to Use Developer vs Routa
+
+| Scenario | Use Developer | Use Routa |
+|----------|--------------|------------|
+| Small, focused task | ✅ | ❌ |
+| Single-file changes | ✅ | ❌ |
+| Quick iterations | ✅ | ❌ |
+| Large, multi-part work | ❌ | ✅ |
+| Parallel work needed | ❌ | ✅ |
+| Multiple isolated tasks | ❌ | ✅ |
+| Requires verification | ❌ | ✅ |
+
+<Note>
+Routa can suggest switching to a Developer specialist after initial multi-agent work is complete for simpler iteration.
+</Note>
+
+From `resources/specialists/routa.md:37` and `resources/specialists/developer.md:2`.
+
+## Hard Rules
+
+<Warning>
+These rules keep Developer focused and prevent it from spawning sub-agents:
+
+0. **Name yourself first** - Call `set_agent_name` with a short task-focused name (1-5 words) in your first response
+1. **Spec first, always** - Create/update the spec BEFORE any implementation
+2. **Wait for approval** - Present the plan and STOP. Wait for user approval before implementing
+3. **NEVER use checkboxes for tasks** - Use `@@@task` blocks ONLY, not `- [ ]` lists
+4. **No delegation** - Never use `delegate_task` or `create_agent`. Do all work yourself
+5. **No scope creep** - Implement only what the approved spec says
+6. **Self-verify** - After implementing, verify every acceptance criterion with concrete evidence
+7. **Notes, not files** - Use notes for plans, reports, and communication. Don't create .md files in the repo
+</Warning>
+
+From `resources/specialists/developer.md:12`.
+
+## Workflow
+
+Developer follows this workflow:
+
+### 1. Understand
+Ask 1-4 clarifying questions if requirements are ambiguous. Skip if straightforward.
+
+### 2. Research
+Read the codebase to understand existing patterns and the code you'll be changing.
+
+### 3. Spec
+Write a spec in the Spec note using `set_note_content(noteId="spec", ...)`. Use `@@@task` blocks for each task. Split work into tasks with isolated scopes.
+
+### 4. STOP
+Say "Please review and approve the plan above." Do NOT proceed.
+
+### 5. Wait
+Do NOT write any code until the user explicitly approves.
+
+### 6. Implement
+After approval, work through each task in order. Follow existing code patterns.
+
+### 7. Update Progress
+After finishing each task, update the spec note — add ✅ next to completed tasks.
+
+### 8. Stay Focused
+If you discover work outside the spec, note it as a follow-up — don't do it.
+
+### 9. Verify
+Execute every command in the Verification Plan.
+
+### 10. Report
+Add verification report to Spec note using `append_to_note(noteId="spec", ...)`. Include exact commands run. Flag ⚠️ or ❌ items.
+
+See `resources/specialists/developer.md:23` for the workflow.
+
+## Spec Format
+
+Developer writes the spec with tasks at the top:
+
+```markdown
+## Goal
+One sentence: the user-visible outcome.
+
+## Tasks
+(use @@@task blocks — they become trackable Task Notes)
+
+@@@task
+# Task Title
+What this task achieves.
+
+## Scope
+Files/areas in scope (and what is NOT).
+
+## Definition of Done
+Specific, checkable completion criteria.
+
+## Verification
+Exact commands or steps to run for this task.
+@@@
+
+## Acceptance Criteria
+Testable checklist (no vague language).
+
+## Non-goals
+What is explicitly out of scope.
+
+## Assumptions
+Mark uncertain ones with "(confirm?)".
+
+## Verification Plan
+- `command to run` — what it checks
+
+## Rollback Plan
+How to revert safely if something goes wrong (if relevant).
+```
+
+See `resources/specialists/developer.md:35` for the spec format.
+
+## Task Syntax
+
+<Note>
+ALWAYS use `@@@task` blocks. NEVER use checkbox lists (`- [ ]`).
+</Note>
+
+```markdown
+@@@task
+# Task Title Here
+What this task achieves.
+
+## Scope
+What files/areas are in scope (and what is not).
+
+## Definition of Done
+Specific completion checks.
+
+## Verification
+Exact commands or steps to run.
+@@@
+```
+
+**Rules:**
+- One `@@@task` block per task
+- First `# Heading` = task title
+- Content below = task body
+- Auto-converts to Task Note when saved
+- Do not edit converted task links — the system produces `- [ ] [Title](routa://...)` format; leave it as-is
+
+From `resources/specialists/developer.md:76`.
+
+## Verification Report Format
+
+After implementing, add this to the end of the Spec note:
+
+```markdown
+## Verification Report
+
+### Acceptance Criteria
+For each criterion, exactly one of:
+- ✅ VERIFIED: evidence (file changed, test output, behavior observed)
+- ⚠️ PARTIAL: what's done vs. what remains
+- ❌ MISSING: what's not done, impact, what's needed
+
+### Commands Run
+Exact commands and their output.
+
+### Risk Notes
+Anything uncertain or potentially fragile.
+
+### Follow-ups
+Non-blocking improvements outside the current scope (if any).
+```
+
+From `resources/specialists/developer.md:101`.
+
+## Example: Developer Workflow
+
+Here's a complete example of Developer executing a task:
+
+### User Request
+
+```
+Add a simple contact form to the website with name, email, and message fields.
+```
+
+### Step 1-2: Understand & Research
+
+```typescript
+// Read existing pages to understand structure
+read_file("src/app/page.tsx")
+read_file("src/components/Header.tsx")
+
+// Check if there's existing form handling
+grep("onSubmit", "src/")
+```
+
+### Step 3-4: Spec & STOP
+
+```typescript
+set_note_content(
+  noteId: "spec",
+  content: `
+## Goal
+Add a contact form to the website that collects name, email, and message.
+
+## Tasks
+
+@@@task
+# Create contact form component
+Build a React component with form fields and validation.
+
+## Scope
+- src/components/ContactForm.tsx (new file)
+- Basic client-side validation
+- No backend integration yet (out of scope)
+
+## Definition of Done
+- Form has name (text), email (email type), message (textarea) fields
+- Client-side validation: all fields required, email format validated
+- Submit button triggers validation
+- Form shows error messages for invalid fields
+
+## Verification
+- npm run dev - form renders without errors
+- Manual test: empty submit shows errors
+- Manual test: invalid email shows error
+- Manual test: valid data enables submit
+@@@
+
+@@@task
+# Add contact page route
+Create a new page route to display the contact form.
+
+## Scope
+- src/app/contact/page.tsx (new file)
+- Add navigation link in header
+
+## Definition of Done
+- /contact route renders the contact form
+- Header navigation includes "Contact" link
+- Page has basic styling consistent with site
+
+## Verification
+- npm run dev - navigate to /contact
+- Click "Contact" in header - goes to /contact
+- Form is visible and styled properly
+@@@
+
+## Acceptance Criteria
+- [ ] Contact form component exists with name, email, message fields
+- [ ] All fields are required with client-side validation
+- [ ] Email field validates format
+- [ ] Form shows error messages for invalid inputs
+- [ ] /contact route displays the form
+- [ ] Header has working "Contact" navigation link
+- [ ] Styling is consistent with existing pages
+
+## Non-goals
+- Backend API for form submission (separate task)
+- Email delivery (separate task)
+- CAPTCHA or spam protection (future enhancement)
+
+## Verification Plan
+- npm run dev - site starts without errors
+- Navigate to /contact - form renders
+- Test validation with invalid inputs
+- Test navigation from header
+
+## Rollback Plan
+Revert commits if needed. No database changes involved.
+  `
+)
+```
+
+Then output:
+
+```
+I've created a plan for adding a contact form to the website.
+
+The work is split into 2 tasks:
+1. Create contact form component with validation
+2. Add contact page route and navigation
+
+Please review and approve the plan above.
+```
+
+**STOP and wait for user approval.**
+
+### Step 6: Implement (after approval)
+
+```typescript
+// Task 1: Create form component
+write_file(
+  "src/components/ContactForm.tsx",
+  `
+'use client';
+
+import { useState } from 'react';
+
+interface FormData {
+  name: string;
+  email: string;
+  message: string;
+}
+
+interface FormErrors {
+  name?: string;
+  email?: string;
+  message?: string;
+}
+
+export function ContactForm() {
+  const [formData, setFormData] = useState<FormData>({
+    name: '',
+    email: '',
+    message: ''
+  });
+  const [errors, setErrors] = useState<FormErrors>({});
+
+  const validateForm = (): boolean => {
+    const newErrors: FormErrors = {};
+    
+    if (!formData.name.trim()) {
+      newErrors.name = 'Name is required';
+    }
+    
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'Invalid email format';
+    }
+    
+    if (!formData.message.trim()) {
+      newErrors.message = 'Message is required';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (validateForm()) {
+      alert('Form is valid! (Backend integration pending)');
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="max-w-md mx-auto space-y-4">
+      <div>
+        <label htmlFor="name" className="block mb-1">Name</label>
+        <input
+          id="name"
+          type="text"
+          value={formData.name}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          className="w-full border rounded px-3 py-2"
+        />
+        {errors.name && <p className="text-red-500 text-sm mt-1">{errors.name}</p>}
+      </div>
+      
+      <div>
+        <label htmlFor="email" className="block mb-1">Email</label>
+        <input
+          id="email"
+          type="email"
+          value={formData.email}
+          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+          className="w-full border rounded px-3 py-2"
+        />
+        {errors.email && <p className="text-red-500 text-sm mt-1">{errors.email}</p>}
+      </div>
+      
+      <div>
+        <label htmlFor="message" className="block mb-1">Message</label>
+        <textarea
+          id="message"
+          value={formData.message}
+          onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+          rows={4}
+          className="w-full border rounded px-3 py-2"
+        />
+        {errors.message && <p className="text-red-500 text-sm mt-1">{errors.message}</p>}
+      </div>
+      
+      <button type="submit" className="bg-blue-500 text-white px-6 py-2 rounded">
+        Submit
+      </button>
+    </form>
+  );
+}
+  `
+)
+
+// Task 2: Create contact page
+write_file(
+  "src/app/contact/page.tsx",
+  `
+import { ContactForm } from '@/components/ContactForm';
+
+export default function ContactPage() {
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold mb-6">Contact Us</h1>
+      <ContactForm />
+    </div>
+  );
+}
+  `
+)
+
+// Update header navigation
+read_file("src/components/Header.tsx")
+// ... edit to add Contact link ...
+```
+
+### Step 9: Verify
+
+```bash
+npm run dev
+# ✓ Server starts without errors
+
+# Manual testing:
+# 1. Navigate to http://localhost:3000/contact
+#    ✓ Form renders correctly
+# 2. Click submit with empty fields
+#    ✓ Error messages appear: "Name is required", "Email is required", "Message is required"
+# 3. Enter invalid email "test"
+#    ✓ Error message: "Invalid email format"
+# 4. Enter valid data and submit
+#    ✓ Alert shows: "Form is valid!"
+# 5. Click "Contact" in header
+#    ✓ Navigates to /contact
+```
+
+### Step 10: Report
+
+```typescript
+append_to_note(
+  noteId: "spec",
+  content: `
+## Verification Report
+
+### Acceptance Criteria
+
+✅ VERIFIED: Contact form component exists with name, email, message fields
+  - Evidence: src/components/ContactForm.tsx created
+  - Verification: Reviewed code, all three fields present
+
+✅ VERIFIED: All fields are required with client-side validation
+  - Evidence: validateForm() function in ContactForm.tsx
+  - Verification: Manual test - empty submit shows "required" errors for all fields
+
+✅ VERIFIED: Email field validates format
+  - Evidence: Email regex validation in validateForm()
+  - Verification: Manual test - "test" shows "Invalid email format"
+
+✅ VERIFIED: Form shows error messages for invalid inputs
+  - Evidence: Error state rendering in JSX
+  - Verification: Manual test - errors display below each field in red
+
+✅ VERIFIED: /contact route displays the form
+  - Evidence: src/app/contact/page.tsx created
+  - Verification: Navigated to /contact, form visible
+
+✅ VERIFIED: Header has working "Contact" navigation link
+  - Evidence: Header.tsx updated with Contact link
+  - Verification: Clicked link in header, navigates to /contact
+
+✅ VERIFIED: Styling is consistent with existing pages
+  - Evidence: Used same Tailwind classes as other components
+  - Verification: Visual inspection - matches site style
+
+### Commands Run
+- npm run dev → Server started successfully
+- Manual testing of all validation scenarios → All passed
+
+### Risk Notes
+- None. Implementation is straightforward client-side form.
+
+### Follow-ups
+- Add backend API endpoint for form submission
+- Add email delivery service integration
+- Consider adding CAPTCHA for spam protection
+  `
+)
+```
+
+## Role Reminder
+
+```
+You work ALONE — never use delegate_task or create_agent.
+Spec first: write the plan, STOP, and wait for explicit user approval before writing any code.
+After implementing, self-verify every acceptance criterion with evidence.
+```
+
+From `resources/specialists/developer.md:6`.
+
+## System Prompt Location
+
+The full system prompt is defined in:
+- `resources/specialists/developer.md` (Markdown format)
+- `resources/specialists/developer.yaml` (YAML config)
+- `src/core/orchestration/specialist-prompts.ts:253` (Hardcoded fallback)
+
+## Best Practices
+
+1. **Research first** - Understand the codebase before planning
+2. **Plan thoroughly** - Write a complete spec before implementing
+3. **Wait for approval** - Never start coding without explicit user approval
+4. **Follow patterns** - Match existing code style and architecture
+5. **Verify completely** - Test every acceptance criterion after implementing
+
+## Common Mistakes
+
+<Warning>
+Avoid these common developer mistakes:
+
+- **Starting to code without approval** - Must STOP and wait after presenting the plan
+- **Using checkboxes** - Use `@@@task` blocks instead of `- [ ]`
+- **Trying to delegate** - Developer works alone, no sub-agents
+- **Skipping verification** - Must verify every acceptance criterion
+- **Creating .md files** - Use notes instead
+</Warning>
+
+## Related Specialists
+
+<CardGroup cols={2}>
+  <Card title="Routa Coordinator" icon="diagram-project" href="/specialists/routa-coordinator">
+    For larger tasks requiring delegation
+  </Card>
+  <Card title="Specialist Overview" icon="book" href="/specialists/overview">
+    Learn about the specialist system
+  </Card>
+</CardGroup>

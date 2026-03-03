@@ -1,0 +1,364 @@
+---
+title: "Session Management"
+description: "Managing A2A sessions and exposing ACP agents"
+icon: "layer-group"
+---
+
+## Overview
+
+A2A sessions represent active ACP agents exposed through the A2A protocol. Each session maps to an underlying ACP session and provides federation capabilities for external AI systems.
+
+## Session Info Structure
+
+```typescript
+interface A2aSessionInfo {
+  id: string;                // Session identifier
+  agentName: string;         // Display name (e.g., "routa-opencode-abc123")
+  provider: string;          // Provider ID (opencode, claude, etc.)
+  status: string;            // Connection status
+  capabilities: string[];    // Available JSON-RPC methods
+  rpcUrl: string;            // JSON-RPC endpoint URL
+  eventStreamUrl: string;    // SSE stream URL
+  createdAt: string;         // ISO 8601 timestamp
+}
+```
+
+## Listing Sessions
+
+### HTTP API
+
+```bash
+GET /api/a2a/sessions
+```
+
+Response:
+
+```json
+[
+  {
+    "id": "session-abc123",
+    "agentName": "routa-opencode-abc123",
+    "provider": "opencode",
+    "status": "connected",
+    "capabilities": [
+      "initialize",
+      "method_list",
+      "session/new",
+      "session/prompt",
+      "session/cancel",
+      "session/load",
+      "list_agents",
+      "create_agent",
+      "delegate_task",
+      "message_agent"
+    ],
+    "rpcUrl": "http://localhost:3000/api/a2a/rpc?sessionId=session-abc123",
+    "eventStreamUrl": "http://localhost:3000/api/a2a/rpc?sessionId=session-abc123",
+    "createdAt": "2026-03-03T12:00:00Z"
+  }
+]
+```
+
+### TypeScript API
+
+```typescript
+import { getA2aSessionRegistry } from "@/core/a2a";
+
+const registry = getA2aSessionRegistry();
+const sessions = registry.listSessions("http://localhost:3000");
+
+for (const session of sessions) {
+  console.log(`Session ${session.id}:`);
+  console.log(`  Agent: ${session.agentName}`);
+  console.log(`  Provider: ${session.provider}`);
+  console.log(`  Status: ${session.status}`);
+  console.log(`  RPC URL: ${session.rpcUrl}`);
+}
+```
+
+## Getting a Single Session
+
+### HTTP API
+
+```bash
+GET /api/a2a/sessions?id=session-abc123
+```
+
+### TypeScript API
+
+```typescript
+const session = registry.getSession(
+  "session-abc123",
+  "http://localhost:3000"
+);
+
+if (session) {
+  console.log("Found session:", session.agentName);
+  console.log("Capabilities:", session.capabilities);
+} else {
+  console.log("Session not found");
+}
+```
+
+## Session Capabilities
+
+Each session exposes capabilities based on its provider:
+
+### Base Capabilities
+
+All sessions support:
+
+```typescript
+const baseCapabilities = [
+  "initialize",      // Initialize the A2A connection
+  "method_list",     // List available JSON-RPC methods
+];
+```
+
+### ACP Session Methods
+
+ACP-based sessions support:
+
+```typescript
+const acpCapabilities = [
+  "session/new",     // Create new ACP session
+  "session/prompt",  // Send message to session
+  "session/cancel",  // Cancel running session
+  "session/load",    // Load persisted session
+];
+```
+
+### Routa Coordination Tools
+
+Routa sessions expose multi-agent coordination:
+
+```typescript
+const routaCapabilities = [
+  "list_agents",     // List agents in workspace
+  "create_agent",    // Create new agent
+  "delegate_task",   // Delegate task to agent
+  "message_agent",   // Send message to agent
+];
+```
+
+## Session Naming
+
+Session names follow this format:
+
+```
+routa-{provider}-{sessionId}
+```
+
+Examples:
+- `routa-opencode-abc12345`
+- `routa-claude-def67890`
+- `routa-gemini-ghi11121`
+
+## Session Status
+
+Currently, all active sessions report status `"connected"`.
+
+Future enhancements may include:
+- `initializing` - Session starting up
+- `idle` - No active task
+- `busy` - Task in progress
+- `error` - Session encountered an error
+- `disconnected` - Session terminated
+
+## Integration with HTTP Session Store
+
+A2A sessions are backed by Routa's HTTP session store:
+
+```typescript
+import { getHttpSessionStore } from "@/core/acp/http-session-store";
+
+const sessionStore = getHttpSessionStore();
+const routaSessions = sessionStore.listSessions();
+
+console.log("Active Routa sessions:", routaSessions.length);
+```
+
+The A2A session registry wraps these sessions with A2A metadata:
+
+```typescript
+private toA2aSessionInfo(
+  session: RoutaSessionRecord,
+  baseUrl: string
+): A2aSessionInfo {
+  return {
+    id: session.sessionId,
+    agentName: `routa-${session.provider}-${session.sessionId.slice(0, 8)}`,
+    provider: session.provider || "unknown",
+    status: "connected",
+    capabilities: this.getSessionCapabilities(session),
+    rpcUrl: `${baseUrl}/api/a2a/rpc?sessionId=${session.sessionId}`,
+    eventStreamUrl: `${baseUrl}/api/a2a/rpc?sessionId=${session.sessionId}`,
+    createdAt: session.createdAt,
+  };
+}
+```
+
+## Session Lifecycle
+
+### 1. Session Creation
+
+Sessions are created when an ACP agent is spawned:
+
+```typescript
+import { AcpSessionManager } from "@/core/acp";
+
+const manager = new AcpSessionManager();
+const sessionId = await manager.createSession({
+  provider: "opencode",
+  workspaceId: "workspace-123",
+  workspacePath: "/path/to/project",
+});
+
+console.log("Created session:", sessionId);
+```
+
+The session is automatically registered in the A2A registry.
+
+### 2. Session Discovery
+
+External systems discover the session via:
+
+1. **Agent Card** - GET `/api/a2a/card`
+2. **Session List** - GET `/api/a2a/sessions`
+
+### 3. Session Usage
+
+External systems interact via JSON-RPC:
+
+```bash
+curl -X POST http://localhost:3000/api/a2a/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "session/prompt",
+    "params": {
+      "sessionId": "session-abc123",
+      "message": "Implement user login"
+    },
+    "id": 1
+  }'
+```
+
+### 4. Session Termination
+
+Sessions terminate when:
+- ACP agent process exits
+- Session timeout (if configured)
+- Manual cancellation via `session/cancel`
+
+## Session Persistence
+
+Sessions can be persisted and restored:
+
+```typescript
+// Save session state
+await manager.persistSession(sessionId);
+
+// Load session later
+const restored = await manager.loadSession(sessionId);
+```
+
+Persisted sessions remain in the A2A registry until explicitly deleted.
+
+## Example: Creating and Exposing a Session
+
+```typescript
+import { AcpSessionManager } from "@/core/acp";
+import { getA2aSessionRegistry } from "@/core/a2a";
+
+async function createAndExposeSession() {
+  // 1. Create ACP session
+  const manager = new AcpSessionManager();
+  const sessionId = await manager.createSession({
+    provider: "opencode",
+    workspaceId: "my-workspace",
+    workspacePath: "/home/user/project",
+    sessionMode: "orchestrator",
+  });
+  
+  console.log("Created session:", sessionId);
+  
+  // 2. Verify it's exposed via A2A
+  const registry = getA2aSessionRegistry();
+  const session = registry.getSession(
+    sessionId,
+    "http://localhost:3000"
+  );
+  
+  if (session) {
+    console.log("Session is exposed via A2A:");
+    console.log("  RPC URL:", session.rpcUrl);
+    console.log("  Capabilities:", session.capabilities);
+  }
+  
+  // 3. Send a message
+  const response = await manager.sendMessage(sessionId, {
+    role: "user",
+    content: "List all TypeScript files in the project",
+  });
+  
+  console.log("Response:", response);
+}
+
+createAndExposeSession();
+```
+
+## Session Filtering
+
+While not currently implemented, sessions could be filtered by:
+
+```typescript
+// Future enhancement
+interface SessionFilter {
+  provider?: string;        // Filter by provider
+  workspaceId?: string;     // Filter by workspace
+  status?: string;          // Filter by status
+  createdAfter?: Date;      // Filter by creation time
+}
+
+const sessions = registry.listSessions(
+  "http://localhost:3000",
+  { provider: "opencode", status: "connected" }
+);
+```
+
+## Security Considerations
+
+### Authentication
+
+Currently, A2A endpoints are not authenticated. In production:
+
+1. **Add API keys** - Require authentication headers
+2. **Rate limiting** - Prevent abuse
+3. **Session ownership** - Verify caller owns the session
+
+### Session IDs
+
+Session IDs are UUIDs and should be treated as secrets:
+
+```typescript
+// Good: Store session ID securely
+process.env.ROUTA_SESSION_ID = sessionId;
+
+// Bad: Log session IDs
+console.log("Session:", sessionId); // Avoid this
+```
+
+## Best Practices
+
+1. **Use base URLs correctly** - Always pass the correct base URL to `listSessions()`
+2. **Check session existence** - Use `getSession()` before calling RPC methods
+3. **Handle session termination** - Sessions may disappear at any time
+4. **Monitor session count** - Limit concurrent sessions to avoid resource exhaustion
+5. **Clean up old sessions** - Remove completed sessions periodically
+
+## Related
+
+- [A2A Overview](/api/a2a/overview)
+- [Agent Card Endpoint](/api/a2a/card)
+- [RPC Execution](/api/a2a/rpc)

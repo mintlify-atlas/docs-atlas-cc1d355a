@@ -1,0 +1,411 @@
+---
+title: Chat Command
+description: Interactive chat sessions with Routa agents
+---
+
+## Overview
+
+The `routa chat` command provides an interactive REPL-style interface for communicating with agents. It creates an ACP (Agent Client Protocol) session and allows you to send prompts, receive responses, and monitor agent activities in real-time.
+
+## Usage
+
+```bash
+routa chat [OPTIONS]
+```
+
+**Options:**
+
+- `--workspace-id <ID>` - Workspace ID (default: `default`)
+- `--provider <NAME>` - ACP provider to use (default: `opencode`)
+- `--role <ROLE>` - Agent role: `ROUTA`, `CRAFTER`, `GATE`, or `DEVELOPER` (default: `DEVELOPER`)
+
+## Starting a Chat Session
+
+### Basic Usage
+
+Start a chat with default settings (DEVELOPER role, opencode provider):
+
+```bash
+routa chat
+```
+
+**Output:**
+
+```
+Routa CLI Chat
+══════════════════════════════════════
+Agent: cli-developer (DEVELOPER)
+Agent ID: agent_abc123
+Workspace: default
+Provider: opencode
+══════════════════════════════════════
+Session started: session_xyz789
+
+Type your message and press Enter. Type /quit to exit.
+Commands: /agents, /tasks, /status, /quit
+
+>
+```
+
+### With Specific Role
+
+Start a chat with a CRAFTER agent:
+
+```bash
+routa chat --role CRAFTER --workspace-id my-project
+```
+
+### With Different Provider
+
+Use Claude as the provider:
+
+```bash
+routa chat --provider claude --role ROUTA
+```
+
+## Chat Commands
+
+Within the chat session, you can use several commands:
+
+### Send Messages
+
+Type any message and press Enter to send it to the agent:
+
+```
+> Implement a user authentication system with OAuth 2.0
+Sending prompt... sent.
+(Agent is processing. Use /status to check progress.)
+```
+
+### View Agents
+
+List all agents in the workspace:
+
+```
+> /agents
+[
+  {
+    "id": "agent_abc123",
+    "name": "cli-developer",
+    "role": "DEVELOPER",
+    "status": "working",
+    "workspaceId": "default",
+    "createdAt": "2026-03-03T12:00:00Z"
+  }
+]
+```
+
+### View Tasks
+
+List all tasks in the workspace:
+
+```
+> /tasks
+[
+  {
+    "id": "task_def456",
+    "title": "Implement user authentication",
+    "status": "IN_PROGRESS",
+    "assignedTo": "agent_abc123",
+    "createdAt": "2026-03-03T12:05:00Z"
+  }
+]
+```
+
+### Check Status
+
+Get the current agent's status:
+
+```
+> /status
+{
+  "id": "agent_abc123",
+  "name": "cli-developer",
+  "role": "DEVELOPER",
+  "status": "working",
+  "currentTask": "task_def456",
+  "completedTasks": 0,
+  "lastActivity": "2026-03-03T12:10:00Z"
+}
+```
+
+### Exit Chat
+
+Quit the chat session:
+
+```
+> /quit
+Goodbye!
+```
+
+Aliases: `/exit`, `/q`
+
+## Example Sessions
+
+### Solo Development Session
+
+Using a DEVELOPER agent to work independently:
+
+```bash
+$ routa chat --role DEVELOPER
+
+Routa CLI Chat
+══════════════════════════════════════
+Agent: cli-developer (DEVELOPER)
+Agent ID: agent_solo_001
+Workspace: default
+Provider: opencode
+══════════════════════════════════════
+Session started: session_123
+
+Type your message and press Enter. Type /quit to exit.
+Commands: /agents, /tasks, /status, /quit
+
+> Add a REST API endpoint for user registration
+Sending prompt... sent.
+(Agent is processing. Use /status to check progress.)
+
+> /status
+{
+  "id": "agent_solo_001",
+  "name": "cli-developer",
+  "role": "DEVELOPER",
+  "status": "working",
+  "currentTask": "task_reg_001",
+  "completedTasks": 0
+}
+
+> /tasks
+[
+  {
+    "id": "task_reg_001",
+    "title": "Add REST API endpoint for user registration",
+    "status": "IN_PROGRESS",
+    "assignedTo": "agent_solo_001"
+  }
+]
+
+> /quit
+Goodbye!
+```
+
+### Coordinator Session
+
+Using a ROUTA coordinator to plan and delegate:
+
+```bash
+$ routa chat --role ROUTA --workspace-id project
+
+> Build a complete user management system with CRUD operations
+Sending prompt... sent.
+(Agent is processing. Use /status to check progress.)
+
+> /tasks
+[
+  {
+    "id": "task_001",
+    "title": "Design database schema for users",
+    "status": "COMPLETED",
+    "assignedTo": "agent_routa_001"
+  },
+  {
+    "id": "task_002",
+    "title": "Implement user CRUD endpoints",
+    "status": "IN_PROGRESS",
+    "assignedTo": "agent_crafter_001"
+  },
+  {
+    "id": "task_003",
+    "title": "Add validation and error handling",
+    "status": "PENDING",
+    "assignedTo": null
+  }
+]
+```
+
+### Implementation Session
+
+Using a CRAFTER to execute tasks:
+
+```bash
+$ routa chat --role CRAFTER
+
+> Complete the user authentication task: task_auth_001
+Sending prompt... sent.
+(Agent is processing. Use /status to check progress.)
+
+> /status
+{
+  "id": "agent_crafter_001",
+  "name": "cli-crafter",
+  "role": "CRAFTER",
+  "status": "working",
+  "currentTask": "task_auth_001",
+  "completedTasks": 2
+}
+```
+
+### Review Session
+
+Using a GATE agent to review work:
+
+```bash
+$ routa chat --role GATE
+
+> Review task_auth_001 and verify all acceptance criteria are met
+Sending prompt... sent.
+(Agent is processing. Use /status to check progress.)
+
+> /status
+{
+  "id": "agent_gate_001",
+  "name": "cli-gate",
+  "role": "GATE",
+  "status": "working",
+  "currentTask": "task_auth_001"
+}
+```
+
+## Offline Mode
+
+If the ACP session cannot be created (provider not available), the chat runs in offline mode:
+
+```
+Session creation failed: provider 'opencode' not found
+Note: Could not create ACP session (provider not available). Running in offline mode.
+Commands will still work for agent/task/workspace management.
+
+Type your message and press Enter. Type /quit to exit.
+Commands: /agents, /tasks, /status, /quit
+```
+
+In offline mode:
+- Agent/task/workspace commands (`/agents`, `/tasks`, `/status`) still work
+- Message sending is not available
+- You can still inspect workspace state
+
+## Provider Options
+
+Supported ACP providers:
+
+| Provider | Description |
+|----------|-------------|
+| `opencode` | OpenCode AI agent (default) |
+| `claude` | Claude Code agent |
+| `codex` | Codex agent |
+| `gemini` | Gemini CLI agent |
+| `kimi` | Kimi agent |
+| `augment` | Augment Code agent |
+| `copilot` | GitHub Copilot agent |
+
+## Environment Setup
+
+Ensure your environment is configured for the chosen provider:
+
+```bash
+# For OpenCode (default)
+export OPENCODE_API_KEY=your_key_here
+
+# For Claude
+export ANTHROPIC_API_KEY=your_key_here
+
+# For Gemini
+export GOOGLE_API_KEY=your_key_here
+```
+
+## Session Management
+
+Each chat session:
+- Creates a new agent in the workspace
+- Establishes an ACP connection
+- Registers the agent with the orchestrator
+- Maintains conversation history
+- Cleans up on exit
+
+The session ID and agent ID are shown when the chat starts.
+
+## Integration with Other Commands
+
+You can inspect chat session results using other CLI commands:
+
+```bash
+# In another terminal, while chat is running
+
+# View the chat agent
+routa agent list --workspace-id default | jq '.result.agents[] | select(.name | startswith("cli-"))'
+
+# Check tasks created during chat
+routa task list --workspace-id default
+
+# Get detailed task info
+routa task get --id task_xyz789
+```
+
+## Troubleshooting
+
+### Provider Not Found
+
+If you see "provider not found":
+
+```bash
+# Check installed ACP agents
+routa acp installed
+
+# Install missing provider
+routa acp install opencode
+```
+
+### Connection Issues
+
+If the ACP session fails to start:
+
+```bash
+# Check runtime status
+routa acp runtime-status
+
+# Ensure Node.js or uv is available
+routa acp ensure-node
+routa acp ensure-uv
+```
+
+### Session Cleanup
+
+If a session wasn't properly closed:
+
+```bash
+# List agents to find orphaned chat agents
+routa agent list | jq '.result.agents[] | select(.name | startswith("cli-"))'
+
+# Sessions are automatically cleaned up when you /quit
+```
+
+## Advanced Usage
+
+### Scripting Chat Interactions
+
+Pipe commands to chat:
+
+```bash
+echo -e "Implement feature X\n/status\n/quit" | routa chat --role DEVELOPER
+```
+
+### Monitoring Multiple Sessions
+
+Run multiple chat sessions in different terminals:
+
+```bash
+# Terminal 1: Coordinator
+routa chat --role ROUTA --workspace-id project
+
+# Terminal 2: Implementor
+routa chat --role CRAFTER --workspace-id project
+
+# Terminal 3: Reviewer
+routa chat --role GATE --workspace-id project
+```
+
+## Next Steps
+
+- Learn about [Agent commands](/cli/agent) to manage agents programmatically
+- Explore [Task commands](/cli/task) to track work
+- Try [Prompt mode](/cli/overview#prompt-mode) for quick one-off commands

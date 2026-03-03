@@ -1,0 +1,274 @@
+---
+title: Session Management
+description: Manage ACP (Agent Communication Protocol) sessions
+---
+
+## Overview
+
+Sessions represent ACP (Agent Communication Protocol) conversations between users and agents. Each session maintains context, history, and state for ongoing interactions.
+
+## List Sessions
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:3000/api/sessions
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/sessions');
+const data = await response.json();
+console.log(data.sessions);
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:3000/api/sessions')
+sessions = response.json()['sessions']
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="GET /api/sessions" type="GET">
+  List all ACP sessions
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="workspaceId" type="string">
+  Filter sessions by workspace ID
+</ParamField>
+
+### Response
+
+<ResponseField name="sessions" type="array" required>
+  Array of session objects
+</ResponseField>
+
+### Session Object
+
+The exact structure depends on the ACP implementation, but typically includes:
+
+<ResponseField name="sessionId" type="string" required>
+  Unique session identifier
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  Optional session name or title
+</ResponseField>
+
+<ResponseField name="workspaceId" type="string">
+  Associated workspace ID
+</ResponseField>
+
+<ResponseField name="createdAt" type="string">
+  ISO 8601 timestamp of session creation
+</ResponseField>
+
+<ResponseField name="lastActivity" type="string">
+  ISO 8601 timestamp of last activity
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Session status (e.g., "active", "idle", "closed")
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "sessions": [
+    {
+      "sessionId": "session-abc123",
+      "name": "Documentation Updates",
+      "workspaceId": "default",
+      "createdAt": "2026-03-03T10:00:00.000Z",
+      "lastActivity": "2026-03-03T10:30:00.000Z",
+      "status": "active"
+    },
+    {
+      "sessionId": "session-xyz789",
+      "name": "Feature Development",
+      "workspaceId": "default",
+      "createdAt": "2026-03-02T14:00:00.000Z",
+      "lastActivity": "2026-03-02T16:45:00.000Z",
+      "status": "idle"
+    }
+  ]
+}
+```
+
+## Session Lifecycle
+
+Sessions are created and managed through the [ACP JSON-RPC endpoint](/api/acp) at `/api/acp`. The sessions endpoint provides read-only access for monitoring and display purposes.
+
+### Creating Sessions
+
+To create a new session, use the ACP JSON-RPC endpoint:
+
+```bash
+curl -X POST http://localhost:3000/api/acp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "session/new",
+    "params": {
+      "workspaceId": "default",
+      "name": "My Session"
+    },
+    "id": 1
+  }'
+```
+
+### Managing Sessions
+
+Other session operations (prompts, mode changes, cancellation) are handled through the ACP endpoint. See the [ACP documentation](/api/acp) for details.
+
+## Session Persistence
+
+Sessions are persisted in the database and automatically hydrated when accessed:
+
+- **Next.js Backend**: Sessions stored in Postgres/SQLite
+- **Rust Backend**: Sessions stored in SQLite
+
+### First Access
+
+On the first call to `/api/sessions`, the session store hydrates from the database, loading all persisted sessions into memory.
+
+## Filtering Sessions
+
+### By Workspace
+
+<CodeGroup>
+```bash cURL
+curl "http://localhost:3000/api/sessions?workspaceId=my-workspace"
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/sessions?workspaceId=my-workspace');
+const data = await response.json();
+console.log(data.sessions);
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'http://localhost:3000/api/sessions',
+    params={'workspaceId': 'my-workspace'}
+)
+sessions = response.json()['sessions']
+```
+</CodeGroup>
+
+## Cache Control
+
+The sessions endpoint includes `Cache-Control: no-store` headers to ensure fresh data is always returned.
+
+## Related Endpoints
+
+### ACP JSON-RPC
+
+For full session management capabilities, use the ACP endpoint:
+
+- **POST /api/acp** - JSON-RPC methods for session creation, prompts, and control
+- **GET /api/acp?sessionId={id}** - SSE stream for real-time session events
+
+See the [ACP documentation](/api/acp) for detailed information.
+
+### Notes by Session
+
+To retrieve notes associated with a session:
+
+```bash
+curl "http://localhost:3000/api/notes?workspaceId=default&sessionId=session-abc123"
+```
+
+See the [Notes documentation](/api/notes) for more details.
+
+### Tasks by Session
+
+To retrieve tasks associated with a session:
+
+```bash
+curl "http://localhost:3000/api/tasks?workspaceId=default&sessionId=session-abc123"
+```
+
+See the [Tasks documentation](/api/tasks) for more details.
+
+## Session Context
+
+Each session maintains:
+
+- **Conversation History**: Messages exchanged between user and agent
+- **Context**: Current working directory, active files, and state
+- **Mode**: Interaction mode (e.g., chat, autonomous, review)
+- **Workspace**: Associated workspace and codebases
+
+## Use Cases
+
+### List Active Sessions
+
+```javascript
+const response = await fetch('http://localhost:3000/api/sessions');
+const { sessions } = await response.json();
+const activeSessions = sessions.filter(s => s.status === 'active');
+console.log(`${activeSessions.length} active sessions`);
+```
+
+### Display Session History
+
+```javascript
+const response = await fetch('http://localhost:3000/api/sessions?workspaceId=default');
+const { sessions } = await response.json();
+
+sessions.sort((a, b) => 
+  new Date(b.lastActivity) - new Date(a.lastActivity)
+);
+
+sessions.forEach(session => {
+  console.log(`${session.name || session.sessionId} - ${session.lastActivity}`);
+});
+```
+
+### Monitor Session Activity
+
+```javascript
+setInterval(async () => {
+  const response = await fetch('http://localhost:3000/api/sessions');
+  const { sessions } = await response.json();
+  
+  const recent = sessions.filter(s => {
+    const lastActivity = new Date(s.lastActivity);
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    return lastActivity > fiveMinutesAgo;
+  });
+  
+  console.log(`${recent.length} sessions active in the last 5 minutes`);
+}, 30000); // Check every 30 seconds
+```
+
+## Implementation
+
+The sessions endpoint is implemented in:
+
+- **Next.js**: `src/app/api/sessions/route.ts`
+- **Rust**: `crates/routa-server/src/routes/sessions.rs`
+
+## Error Responses
+
+The endpoint returns standard HTTP status codes:
+
+| Status Code | Description |
+|-------------|-------------|
+| `200` | Success |
+| `500` | Server error (e.g., database connection failed) |
+
+### Error Example
+
+```json
+{
+  "error": "Failed to load sessions from database"
+}
+```

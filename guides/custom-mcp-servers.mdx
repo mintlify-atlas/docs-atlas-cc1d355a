@@ -1,0 +1,581 @@
+---
+title: Integrating Custom MCP Servers
+description: Register and manage user-defined MCP servers alongside the built-in coordination server
+icon: plug
+---
+
+## Overview
+
+Routa includes a built-in MCP server for coordination tools (task delegation, messaging, notes), but you can register unlimited custom MCP servers to expose additional tools to your agents.
+
+Custom MCP servers support:
+- **Three connection types**: stdio, HTTP, SSE (Server-Sent Events)
+- **Environment variables**: Pass secrets and configuration
+- **Workspace scoping**: Global or per-workspace servers
+- **Enable/disable control**: Toggle servers without deleting configuration
+
+## MCP Server Types
+
+### stdio (Standard Input/Output)
+
+Spawns a local process and communicates via stdin/stdout.
+
+**Use cases**: Local tools, file system access, database clients
+
+**Example**: File system MCP server
+```json
+{
+  "name": "filesystem",
+  "type": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/workspace"],
+  "env": {}
+}
+```
+
+### HTTP
+
+Connects to an MCP server via HTTP with JSON-RPC.
+
+**Use cases**: Remote services, cloud APIs, shared team tools
+
+**Example**: Remote MCP server
+```json
+{
+  "name": "remote-tools",
+  "type": "http",
+  "url": "https://mcp.example.com/v1",
+  "headers": {
+    "Authorization": "Bearer ${MCP_API_KEY}"
+  },
+  "env": {
+    "MCP_API_KEY": "your-api-key"
+  }
+}
+```
+
+### SSE (Server-Sent Events)
+
+Connects to an MCP server using server-sent events for real-time updates.
+
+**Use cases**: Streaming data, live updates, event-driven tools
+
+**Example**: SSE-based MCP server
+```json
+{
+  "name": "live-data",
+  "type": "sse",
+  "url": "https://mcp.example.com/sse",
+  "headers": {},
+  "env": {}
+}
+```
+
+## Supported AI Providers
+
+Custom MCP servers work with these AI providers:
+
+<CardGroup cols={3}>
+  <Card title="Claude Code" icon="cloud">
+    Full support via `@anthropic-ai/claude-agent-sdk`
+  </Card>
+  <Card title="OpenCode" icon="code">
+    Full support via `@opencode-ai/sdk`
+  </Card>
+  <Card title="Codex" icon="terminal">
+    Full support via `@openai/codex`
+  </Card>
+  <Card title="Gemini" icon="stars">
+    Full support via `@google/generative-ai-cli`
+  </Card>
+  <Card title="Kimi" icon="brain">
+    Full support (MCP compatible)
+  </Card>
+  <Card title="Augment" icon="sparkles">
+    Full support (MCP compatible)
+  </Card>
+  <Card title="Copilot" icon="github">
+    Full support (MCP compatible)
+  </Card>
+</CardGroup>
+
+## Configuration Management
+
+### Via Web UI
+
+<Steps>
+  <Step title="Open MCP Settings">
+    Navigate to Settings → MCP Servers in the Routa interface.
+  </Step>
+
+  <Step title="Add New Server">
+    Click "Add MCP Server" and fill in:
+    - **Name**: Unique identifier (e.g., "github-api")
+    - **Description**: What tools this server provides
+    - **Type**: stdio / http / sse
+    - **Configuration**: Type-specific settings (see examples below)
+  </Step>
+
+  <Step title="Configure Connection">
+    **For stdio:**
+    - Command: Path or command name (e.g., `npx`, `python`, `/usr/bin/mcp-server`)
+    - Args: Command arguments as array
+    - Env: Environment variables
+
+    **For HTTP/SSE:**
+    - URL: Full endpoint URL
+    - Headers: HTTP headers (e.g., Authorization)
+    - Env: Environment variables for variable substitution
+  </Step>
+
+  <Step title="Enable Server">
+    Toggle "Enabled" to activate the server. Disabled servers remain configured but won't be passed to agents.
+  </Step>
+
+  <Step title="Restart Agents">
+    Existing agents won't see the new server. Spawn new agents to use updated MCP configuration.
+  </Step>
+</Steps>
+
+### Via REST API
+
+#### Create MCP Server
+
+```bash
+curl -X POST http://localhost:3000/api/mcp-servers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "github-mcp",
+    "name": "github-api",
+    "description": "GitHub API access via MCP",
+    "type": "http",
+    "url": "https://mcp-github.example.com/v1",
+    "headers": {
+      "Authorization": "Bearer ${GITHUB_TOKEN}"
+    },
+    "env": {
+      "GITHUB_TOKEN": "ghp_..."
+    },
+    "enabled": true
+  }'
+```
+
+#### List MCP Servers
+
+```bash
+# All servers
+curl http://localhost:3000/api/mcp-servers
+
+# Enabled only
+curl http://localhost:3000/api/mcp-servers?enabled=true
+
+# For specific workspace
+curl http://localhost:3000/api/mcp-servers?workspaceId=ws-123
+```
+
+#### Update MCP Server
+
+```bash
+curl -X PATCH http://localhost:3000/api/mcp-servers/github-mcp \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": false}'
+```
+
+#### Delete MCP Server
+
+```bash
+curl -X DELETE http://localhost:3000/api/mcp-servers/github-mcp
+```
+
+### Database Storage
+
+MCP server configurations are stored in the `custom_mcp_servers` table:
+
+```sql
+CREATE TABLE custom_mcp_servers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  type TEXT NOT NULL CHECK(type IN ('stdio', 'http', 'sse')),
+  command TEXT,
+  args JSONB,
+  url TEXT,
+  headers JSONB,
+  env JSONB,
+  enabled BOOLEAN DEFAULT true,
+  workspace_id TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+See implementation: [src/core/store/custom-mcp-server-store.ts](https://github.com/routa/routa-js/blob/main/src/core/store/custom-mcp-server-store.ts)
+
+## Common MCP Server Examples
+
+### File System Access
+
+Provides file read/write tools to agents.
+
+```json
+{
+  "id": "fs-workspace",
+  "name": "filesystem",
+  "description": "File system access for workspace",
+  "type": "stdio",
+  "command": "npx",
+  "args": [
+    "-y",
+    "@modelcontextprotocol/server-filesystem",
+    "/home/user/workspace"
+  ],
+  "enabled": true
+}
+```
+
+**Tools provided**: `read_file`, `write_file`, `list_directory`, `search_files`
+
+### GitHub API
+
+GitHub operations (issues, PRs, comments).
+
+```json
+{
+  "id": "github-api",
+  "name": "github",
+  "description": "GitHub API access",
+  "type": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-github"],
+  "env": {
+    "GITHUB_TOKEN": "ghp_..."
+  },
+  "enabled": true
+}
+```
+
+**Tools provided**: `create_issue`, `create_pull_request`, `add_comment`, `list_issues`
+
+### PostgreSQL Database
+
+Query and modify PostgreSQL databases.
+
+```json
+{
+  "id": "postgres-db",
+  "name": "postgres",
+  "description": "PostgreSQL database access",
+  "type": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-postgres"],
+  "env": {
+    "DATABASE_URL": "postgresql://user:pass@localhost:5432/mydb"
+  },
+  "enabled": true
+}
+```
+
+**Tools provided**: `query`, `execute`, `list_tables`, `describe_table`
+
+### Brave Search
+
+Web search via Brave Search API.
+
+```json
+{
+  "id": "brave-search",
+  "name": "brave-search",
+  "description": "Web search via Brave",
+  "type": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+  "env": {
+    "BRAVE_API_KEY": "BSA..."
+  },
+  "enabled": true
+}
+```
+
+**Tools provided**: `brave_web_search`, `brave_local_search`
+
+### Puppeteer (Browser Automation)
+
+Control headless Chrome for web scraping and testing.
+
+```json
+{
+  "id": "puppeteer",
+  "name": "puppeteer",
+  "description": "Browser automation via Puppeteer",
+  "type": "stdio",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+  "enabled": true
+}
+```
+
+**Tools provided**: `puppeteer_navigate`, `puppeteer_screenshot`, `puppeteer_click`, `puppeteer_fill`
+
+### Slack API
+
+Send messages and interact with Slack.
+
+```json
+{
+  "id": "slack-api",
+  "name": "slack",
+  "description": "Slack integration",
+  "type": "http",
+  "url": "https://mcp-slack.example.com/v1",
+  "headers": {
+    "Authorization": "Bearer ${SLACK_TOKEN}"
+  },
+  "env": {
+    "SLACK_TOKEN": "xoxb-..."
+  },
+  "enabled": true
+}
+```
+
+**Tools provided**: `send_message`, `list_channels`, `upload_file`
+
+### Jira API
+
+Manage Jira issues and projects.
+
+```json
+{
+  "id": "jira-api",
+  "name": "jira",
+  "description": "Jira project management",
+  "type": "http",
+  "url": "https://your-domain.atlassian.net/rest/api/2",
+  "headers": {
+    "Authorization": "Basic ${JIRA_AUTH}",
+    "Content-Type": "application/json"
+  },
+  "env": {
+    "JIRA_AUTH": "base64(email:api_token)"
+  },
+  "enabled": true
+}
+```
+
+**Tools provided**: `create_issue`, `update_issue`, `add_comment`, `transition_issue`
+
+## MCP Configuration Merging
+
+When spawning an agent, Routa merges custom MCP servers with the built-in coordination server:
+
+```typescript
+import { mergeCustomMcpServers } from '@/core/store/custom-mcp-server-store';
+
+const builtInServers = {
+  'routa-coordination': {
+    type: 'http',
+    url: 'http://localhost:3000/api/mcp',
+    env: { ROUTA_WORKSPACE_ID: workspaceId }
+  }
+};
+
+const customServers = await customMcpServerStore.listEnabled(workspaceId);
+const mergedConfig = mergeCustomMcpServers(builtInServers, customServers);
+
+// Pass to agent
+const agent = await spawnAgent({
+  mcpServers: mergedConfig,
+  ...
+});
+```
+
+**Merging rules:**
+1. Built-in servers take priority (protects `routa-coordination`)
+2. Only enabled custom servers are included
+3. Custom servers with duplicate names are skipped
+
+See implementation: [src/core/acp/mcp-config-generator.ts](https://github.com/routa/routa-js/blob/main/src/core/acp/mcp-config-generator.ts)
+
+## Environment Variable Substitution
+
+MCP server configurations support `${VAR}` syntax for environment variable substitution:
+
+```json
+{
+  "url": "https://api.example.com",
+  "headers": {
+    "Authorization": "Bearer ${API_TOKEN}"
+  },
+  "env": {
+    "API_TOKEN": "actual-token-value"
+  }
+}
+```
+
+At runtime, `${API_TOKEN}` is replaced with the value from `env`.
+
+## Workspace Scoping
+
+### Global MCP Servers
+
+Omit `workspaceId` to make a server available to all workspaces:
+
+```bash
+curl -X POST http://localhost:3000/api/mcp-servers \
+  -d '{
+    "id": "github-global",
+    "name": "github",
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github"],
+    "enabled": true
+  }'
+```
+
+### Workspace-Specific MCP Servers
+
+Include `workspaceId` to restrict a server to one workspace:
+
+```bash
+curl -X POST http://localhost:3000/api/mcp-servers \
+  -d '{
+    "id": "fs-project-a",
+    "name": "filesystem",
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/project-a"],
+    "workspaceId": "ws-project-a",
+    "enabled": true
+  }'
+```
+
+## Testing MCP Servers
+
+### Verify Connection
+
+```bash
+# Test stdio server
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0.0"}}}' | npx -y @modelcontextprotocol/server-filesystem /tmp
+
+# Test HTTP server
+curl -X POST https://mcp.example.com/v1 \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+```
+
+### Inspect Agent MCP Config
+
+Check what MCP servers an agent sees:
+
+```bash
+# Get agent details
+curl http://localhost:3000/api/agents/<agent-id>
+
+# Check MCP config
+curl http://localhost:3000/api/agents/<agent-id>/mcp-config
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Agent doesn't see custom tools">
+    1. Verify server is **enabled**: `GET /api/mcp-servers`
+    2. Check workspace scope matches agent's workspace
+    3. Restart agent (existing agents don't reload MCP config)
+    4. Test MCP server connection independently
+  </Accordion>
+
+  <Accordion title="stdio server fails to spawn">
+    - Check `command` is executable: `which <command>`
+    - Verify `args` are correct (use array, not string)
+    - Check environment variables are set
+    - Test command manually: `<command> <args>`
+  </Accordion>
+
+  <Accordion title="HTTP server connection errors">
+    - Verify URL is reachable: `curl <url>`
+    - Check headers (especially Authorization)
+    - Ensure server supports MCP JSON-RPC protocol
+    - Check firewall/CORS settings
+  </Accordion>
+
+  <Accordion title="Environment variables not substituted">
+    - Use `${VAR}` syntax (not `$VAR` or `%VAR%`)
+    - Define variable in `env` object
+    - Check logs for substitution errors
+  </Accordion>
+
+  <Accordion title="Built-in routa-coordination server missing">
+    Built-in server is always included. If missing:
+    - Check agent spawn logs
+    - Verify Routa server is running
+    - Ensure `/api/mcp` endpoint is accessible
+  </Accordion>
+</AccordionGroup>
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Store secrets in environment variables">
+    Don't hardcode secrets in MCP configs. Use environment variables:
+
+    ```json
+    {
+      "headers": {
+        "Authorization": "Bearer ${API_TOKEN}"
+      },
+      "env": {
+        "API_TOKEN": "load-from-env-or-secrets-manager"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Restrict file system access">
+    When using filesystem MCP server, limit scope:
+
+    ```json
+    {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/safe/path/only"]
+    }
+    ```
+
+    Don't use root directory (`/`) or home directory (`~`).
+  </Accordion>
+
+  <Accordion title="Use workspace scoping">
+    Limit MCP servers to specific workspaces to reduce blast radius:
+
+    ```json
+    {
+      "workspaceId": "ws-project-a"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Disable unused servers">
+    Instead of deleting, disable servers you're not actively using:
+
+    ```bash
+    curl -X PATCH http://localhost:3000/api/mcp-servers/<id> \
+      -d '{"enabled": false}'
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Custom Specialists" icon="user-gear" href="/guides/custom-specialists">
+    Create specialists that use custom MCP tools
+  </Card>
+  <Card title="Workflows" icon="sitemap" href="/guides/workflows">
+    Use MCP tools in automated workflows
+  </Card>
+  <Card title="Desktop App" icon="desktop" href="/guides/desktop-app">
+    Run MCP servers in desktop environment
+  </Card>
+  <Card title="MCP Documentation" icon="book" href="https://modelcontextprotocol.io">
+    Official MCP protocol documentation
+  </Card>
+</CardGroup>

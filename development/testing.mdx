@@ -1,0 +1,390 @@
+---
+title: Testing Guide
+description: Running tests, E2E testing with Playwright, and API contract validation
+---
+
+Routa uses multiple testing strategies to ensure quality across web and desktop deployments.
+
+## Test Types
+
+- **Unit Tests** — Vitest for component and utility testing
+- **E2E Tests** — Playwright for browser automation
+- **API Contract Tests** — Validate Next.js/Rust API parity
+- **Schema Validation** — Ensure OpenAPI compliance
+
+## Unit Testing with Vitest
+
+### Running Tests
+
+```bash
+# Run all unit tests
+npm test
+
+# Interactive UI mode
+npm run test:ui
+
+# Single run (CI mode)
+npm run test:run
+```
+
+See package.json:40-42 for test commands.
+
+### Test Configuration
+
+Vitest is configured with:
+
+- **React Testing Library** — Component testing
+- **jsdom** — Browser environment simulation
+- **Coverage reporting** — Istanbul integration
+
+### Writing Unit Tests
+
+```typescript
+import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { MyComponent } from './MyComponent';
+
+describe('MyComponent', () => {
+  it('renders correctly', () => {
+    render(<MyComponent />);
+    expect(screen.getByText('Hello')).toBeInTheDocument();
+  });
+});
+```
+
+## E2E Testing with Playwright
+
+### Configuration
+
+Playwright is configured in playwright.config.ts:1-25:
+
+```typescript
+export default defineConfig({
+  testDir: "./e2e",
+  timeout: 120_000,
+  use: {
+    baseURL: "http://localhost:3000",
+    headless: true,
+    screenshot: "only-on-failure",
+    trace: "retain-on-failure",
+  },
+  projects: [
+    { name: "chromium", use: { browserName: "chromium" } },
+    { name: "chromium-headed", use: { browserName: "chromium", headless: false } },
+  ],
+});
+```
+
+### Running E2E Tests
+
+```bash
+# Run all E2E tests
+npm run test:e2e
+
+# Run with visible browser (debugging)
+npm run test:e2e:headed
+
+# Run specific test
+npm run test:e2e:specialist
+npm run test:e2e:specialist:headed
+
+# Debug mode with Playwright Inspector
+npm run test:e2e:debug
+```
+
+See package.json:43-49 for all E2E commands.
+
+### Testing Desktop (Tauri)
+
+Test the Rust backend with Playwright:
+
+```bash
+# Terminal 1: Start Tauri
+cd apps/desktop
+npm run tauri dev
+
+# Terminal 2: Run Tauri E2E tests
+npm run test:e2e:tauri
+npm run test:e2e:tauri:headed
+```
+
+### Example E2E Test
+
+From e2e/tauri-backend-check.spec.ts:1-118:
+
+```typescript
+import { test, expect } from "@playwright/test";
+
+test.describe("Tauri/Rust Backend Verification", () => {
+  test.setTimeout(60_000);
+
+  test("Rust backend health check", async ({ request }) => {
+    const response = await request.get("http://127.0.0.1:3210/api/health");
+    expect(response.ok()).toBeTruthy();
+    
+    const data = await response.json();
+    expect(data.status).toBe("ok");
+    expect(data.server).toBe("routa-server");
+  });
+
+  test("API endpoints work correctly", async ({ request }) => {
+    // Test agents endpoint
+    const agentsRes = await request.get("http://127.0.0.1:3210/api/agents");
+    expect(agentsRes.ok()).toBeTruthy();
+    const agents = await agentsRes.json();
+    expect(agents).toHaveProperty("agents");
+
+    // Test workspaces endpoint
+    const workspacesRes = await request.get("http://127.0.0.1:3210/api/workspaces");
+    expect(workspacesRes.ok()).toBeTruthy();
+    const workspaces = await workspacesRes.json();
+    expect(workspaces).toHaveProperty("workspaces");
+  });
+
+  test("Frontend loads correctly from Rust backend", async ({ page }) => {
+    await page.goto("http://127.0.0.1:3210");
+    
+    // Check that the page loads
+    await expect(page.locator("header span").filter({ hasText: "Routa" }))
+      .toBeVisible({ timeout: 15_000 });
+    
+    // Take screenshot
+    await page.screenshot({
+      path: "test-results/tauri-01-main-page.png",
+      fullPage: true,
+    });
+  });
+});
+```
+
+### Screenshot Testing
+
+Playwright automatically captures screenshots on failure. For manual screenshots:
+
+```typescript
+test("visual regression", async ({ page }) => {
+  await page.goto("/");
+  await page.screenshot({
+    path: "test-results/homepage.png",
+    fullPage: true,
+  });
+});
+```
+
+## API Contract Testing
+
+### Checking API Parity
+
+Ensure Next.js and Rust backends implement identical APIs:
+
+```bash
+# Check API parity (static analysis)
+npm run api:check
+
+# JSON output for CI
+npm run api:check:json
+
+# Auto-fix issues
+npm run api:check:fix
+```
+
+### Running Contract Tests
+
+```bash
+# Test against Next.js (port 3000)
+BASE_URL=http://localhost:3000 npm run api:test:nextjs
+
+# Test against Rust (port 3210)
+BASE_URL=http://localhost:3210 npm run api:test:rust
+
+# Test both backends
+npm run api:test
+```
+
+See package.json:26-34 for API test commands.
+
+### Schema Validation
+
+Validate OpenAPI schema compliance:
+
+```bash
+# Validate schema
+npm run api:schema:validate
+
+# JSON output
+npm run api:schema:validate:json
+
+# Generate report
+npm run api:schema:report
+```
+
+### Full API Validation
+
+```bash
+# Static validation
+npm run api:validate
+
+# Runtime validation (requires running servers)
+npm run api:validate:full
+```
+
+See package.json:38-39.
+
+## Testing Workflow
+
+### Pre-commit Checklist
+
+```bash
+# 1. Run unit tests
+npm run test:run
+
+# 2. Run E2E tests
+npm run test:e2e
+
+# 3. Validate API parity
+npm run api:check
+
+# 4. Lint code
+npm run lint
+```
+
+### Pull Request Testing
+
+From AGENTS.md:20:
+
+> When plan to create a PR, should attach screenshot with Playwright in GitHub PR body
+
+Include Playwright screenshots in PR descriptions to demonstrate UI changes.
+
+### Testing Both Backends
+
+```bash
+# Terminal 1: Start Next.js
+npm run dev
+
+# Terminal 2: Run Next.js tests
+BASE_URL=http://localhost:3000 npm run api:test
+npm run test:e2e
+
+# Terminal 3: Start Rust server
+npm run start:desktop:server
+
+# Terminal 4: Run Rust tests
+BASE_URL=http://localhost:3210 npm run api:test
+npm run test:e2e:tauri
+```
+
+## Continuous Integration
+
+### GitHub Actions
+
+Typical CI workflow:
+
+```yaml
+name: Test
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 20
+      
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+      
+      - name: Run unit tests
+        run: npm run test:run
+      
+      - name: Start Next.js server
+        run: npm run dev &
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      
+      - name: Wait for server
+        run: npx wait-on http://localhost:3000
+      
+      - name: Run E2E tests
+        run: npm run test:e2e
+      
+      - name: Upload screenshots
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: playwright-screenshots
+          path: test-results/
+```
+
+## Testing Best Practices
+
+### From AGENTS.md
+
+Key testing guidelines from AGENTS.md:12-16:
+
+1. **Use Playwright MCP tool** to test the web UI when possible
+2. **Test both Next.js and Rust** to ensure API parity
+3. **Capture screenshots** for visual verification
+4. **Run E2E tests** before pushing changes
+
+### Test Organization
+
+```
+e2e/
+├── ui-verification.spec.ts       # Basic UI tests
+├── tauri-backend-check.spec.ts   # Rust backend tests
+├── specialist-selection.spec.ts  # Feature tests
+├── mcp-integration.spec.ts       # Protocol tests
+└── ...
+```
+
+### Writing Good Tests
+
+1. **Descriptive names** — Clearly state what is being tested
+2. **Independent tests** — Each test should run in isolation
+3. **Wait strategies** — Use proper waits, not arbitrary timeouts
+4. **Cleanup** — Reset state between tests
+5. **Screenshots** — Capture visual state for debugging
+
+## Debugging Tests
+
+### Playwright Debug Mode
+
+```bash
+# Debug specific test
+npm run test:e2e:debug
+
+# Then in the Playwright Inspector:
+# - Step through test execution
+# - Inspect page state
+# - Try selectors in REPL
+```
+
+### Headed Mode
+
+```bash
+# Run with visible browser
+npm run test:e2e:headed
+
+# Slower execution for observation
+npm run test:e2e:specialist:headed
+```
+
+### Test Results
+
+Playwright saves artifacts in `test-results/`:
+
+- **Screenshots** — Captured on failure
+- **Traces** — Full execution traces
+- **Videos** — Recording of test execution (if enabled)
+
+## Related Resources
+
+- [Dual Backend Architecture](/development/dual-backend) — Understanding both backends
+- [Database Configuration](/development/database) — Database testing setup
+- [Contributing Guide](/development/contributing) — Code quality standards
+- [Playwright Docs](https://playwright.dev/) — Official Playwright documentation
+- [Vitest Docs](https://vitest.dev/) — Official Vitest documentation

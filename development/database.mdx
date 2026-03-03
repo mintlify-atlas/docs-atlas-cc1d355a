@@ -1,0 +1,301 @@
+---
+title: Database Configuration
+description: Setting up Postgres and SQLite for Routa development
+---
+
+Routa supports multiple database backends through Drizzle ORM:
+
+- **Postgres** — Production web deployments (Neon, Vercel)
+- **SQLite** — Desktop and local development
+- **InMemory** — Testing and quick prototyping
+
+## Database Selection
+
+The system automatically selects the database driver based on environment variables (drizzle.config.ts:1-26):
+
+```typescript
+const databaseUrl = process.env.DATABASE_URL;
+const usePostgres = !!databaseUrl;
+
+export default defineConfig({
+  schema: usePostgres 
+    ? "./src/core/db/schema.ts" 
+    : "./src/core/db/sqlite-schema.ts",
+  dialect: usePostgres ? "postgresql" : "sqlite",
+  dbCredentials: usePostgres
+    ? { url: databaseUrl }
+    : { url: process.env.SQLITE_DB_PATH ?? "routa.db" },
+});
+```
+
+### Decision Logic
+
+1. If `DATABASE_URL` is set → Use **Postgres**
+2. If `ROUTA_DB_DRIVER=sqlite` → Use **SQLite**
+3. Otherwise → Use **InMemory**
+
+See src/core/routa-system.ts:267-289 for the implementation.
+
+## Postgres Configuration
+
+### Local Postgres
+
+```bash
+# Install Postgres
+brew install postgresql  # macOS
+sudo apt install postgresql  # Ubuntu
+
+# Start Postgres
+brew services start postgresql  # macOS
+sudo systemctl start postgresql  # Ubuntu
+
+# Create database
+createdb routa
+
+# Set DATABASE_URL
+export DATABASE_URL="postgresql://localhost/routa"
+```
+
+### Neon Serverless (Recommended)
+
+[Neon](https://neon.tech) provides serverless Postgres optimized for Next.js:
+
+1. Create a Neon account at https://neon.tech
+2. Create a new project
+3. Copy the connection string
+4. Set environment variable:
+
+```bash
+export DATABASE_URL="postgresql://user:pass@host.neon.tech/dbname"
+```
+
+### Vercel Postgres
+
+For Vercel deployments:
+
+1. Install Vercel Postgres integration
+2. Connection string is automatically set as `DATABASE_URL`
+3. No additional configuration needed
+
+### Schema Management
+
+```bash
+# Generate migration files
+npm run db:generate
+
+# Apply migrations
+npm run db:migrate
+
+# Push schema directly (development)
+npm run db:push
+
+# Push without strict checks (CI)
+npm run db:push:ci
+
+# Open Drizzle Studio
+npm run db:studio
+```
+
+See package.json:18-22 for all database commands.
+
+## SQLite Configuration
+
+### Local SQLite
+
+```bash
+# Set database driver
+export ROUTA_DB_DRIVER=sqlite
+
+# Optional: Custom database path
+export SQLITE_DB_PATH="/path/to/routa.db"
+
+# Start development server
+npm run dev
+```
+
+The database file will be created automatically on first run.
+
+### Desktop (Tauri)
+
+The Tauri desktop app uses SQLite by default:
+
+```bash
+# Start Tauri with embedded SQLite
+npm run tauri dev
+
+# Database location (platform-specific)
+# macOS: ~/Library/Application Support/com.routa.dev/routa.db
+# Linux: ~/.local/share/com.routa.dev/routa.db
+# Windows: %APPDATA%\com.routa.dev\routa.db
+```
+
+### Schema Management
+
+```bash
+# Generate SQLite migrations
+npm run db:sqlite:generate
+
+# Apply SQLite migrations
+npm run db:sqlite:migrate
+
+# Push SQLite schema
+npm run db:sqlite:push
+```
+
+See package.json:23-25 for SQLite-specific commands.
+
+## InMemory Mode
+
+Useful for testing and development without persistence:
+
+```bash
+# Unset DATABASE_URL and ROUTA_DB_DRIVER
+unset DATABASE_URL
+unset ROUTA_DB_DRIVER
+
+# Start server (will use InMemory)
+npm run dev
+```
+
+Data is lost when the server restarts.
+
+## Database Schema
+
+### Core Tables
+
+Both Postgres and SQLite implement the same logical schema:
+
+- **agents** — Agent definitions and configurations
+- **conversations** — Conversation history
+- **tasks** — Task management and dependencies
+- **notes** — Collaborative notes (CRDT-backed)
+- **workspaces** — Workspace metadata
+- **codebases** — Codebase registrations
+- **background_tasks** — Background job queue
+- **schedules** — Scheduled task definitions
+
+### Schema Files
+
+- `src/core/db/schema.ts` — Postgres schema (Drizzle)
+- `src/core/db/sqlite-schema.ts` — SQLite schema (Drizzle)
+
+### Store Implementations
+
+The RoutaSystem (src/core/routa-system.ts) provides three implementations:
+
+#### 1. InMemory Stores
+
+```typescript
+const agentStore = new InMemoryAgentStore();
+const taskStore = new InMemoryTaskStore();
+const noteStore = new CRDTNoteStore(noteBroadcaster, crdtManager);
+// ... other stores
+```
+
+#### 2. Postgres Stores
+
+```typescript
+const db = getPostgresDatabase();
+const agentStore = new PgAgentStore(db);
+const taskStore = new PgTaskStore(db);
+const noteStore = new PgNoteStore(db);
+// ... other stores
+```
+
+#### 3. SQLite Stores
+
+```typescript
+const db = getSqliteDatabase();
+const agentStore = new SqliteAgentStore(db);
+const taskStore = new SqliteTaskStore(db);
+const noteStore = new SqliteNoteStore(db);
+// ... other stores
+```
+
+## Docker Configuration
+
+### SQLite (Default)
+
+```bash
+# Build and run with SQLite
+docker compose up --build
+
+# Data persists in Docker volume
+```
+
+### Postgres
+
+Create `.env` in project root:
+
+```dotenv
+ROUTA_DB_DRIVER=postgres
+DATABASE_URL=postgresql://routa:routa_secret@postgres:5432/routa
+POSTGRES_PASSWORD=routa_secret
+```
+
+Start with Postgres profile:
+
+```bash
+# Starts bundled Postgres container
+docker compose --profile postgres up --build
+```
+
+## Troubleshooting
+
+### Connection Errors
+
+```bash
+# Check Postgres is running
+psql -l
+
+# Test connection
+psql $DATABASE_URL
+
+# Check SQLite file permissions
+ls -la routa.db
+```
+
+### Migration Issues
+
+```bash
+# Reset migrations (development only!)
+rm -rf drizzle/
+npm run db:generate
+npm run db:push
+
+# For SQLite
+rm -rf drizzle-sqlite/
+npm run db:sqlite:generate
+npm run db:sqlite:push
+```
+
+### Schema Drift
+
+```bash
+# Compare schema with database
+npm run db:studio
+
+# Generate migration for differences
+npm run db:generate
+npm run db:migrate
+```
+
+## Performance Considerations
+
+### Postgres
+
+- **Connection pooling** — Handled by Neon Serverless
+- **Prepared statements** — Automatic via Drizzle
+- **Indexes** — Defined in schema
+
+### SQLite
+
+- **WAL mode** — Enabled by default for better concurrency
+- **Synchronous=NORMAL** — Balance between safety and performance
+- **Temp store=MEMORY** — Faster temp operations
+
+## Related Resources
+
+- [Dual Backend Architecture](/development/dual-backend) — Next.js vs Rust
+- [Testing Guide](/development/testing) — Database testing strategies
+- [Drizzle ORM Docs](https://orm.drizzle.team/) — Official documentation

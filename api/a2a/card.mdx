@@ -1,0 +1,384 @@
+---
+title: "Agent Card Endpoint"
+description: "A2A agent card for service discovery"
+icon: "id-card"
+---
+
+## Overview
+
+The **Agent Card** endpoint exposes Routa's capabilities through the A2A protocol. It provides a machine-readable description of Routa's skills, transport methods, and API endpoints for external AI systems to discover and integrate.
+
+## Endpoint
+
+```
+GET /api/a2a/card
+```
+
+## Response Format
+
+The agent card follows the [A2A SDK v0.3.x AgentCard specification](https://github.com/a2a-js/sdk):
+
+```json
+{
+  "name": "Routa Multi-Agent Coordinator",
+  "description": "Multi-agent coordination platform that orchestrates AI agents for software development tasks. Supports creating CRAFTER, GATE, and DEVELOPER agents to plan, implement, and verify code changes.",
+  "protocolVersion": "0.3.0",
+  "version": "0.2.0",
+  "url": "http://localhost:3000/api/a2a/rpc",
+  "skills": [...],
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false
+  },
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain", "application/json"],
+  "additionalInterfaces": [...],
+  "documentationUrl": "http://localhost:3000/a2a"
+}
+```
+
+## Skills
+
+Routa exposes three primary skills:
+
+### 1. Agent Coordination
+
+```json
+{
+  "id": "agent-coordination",
+  "name": "Agent Coordination",
+  "description": "Create, delegate tasks to, and coordinate multiple AI agents for complex software development workflows",
+  "tags": ["coordination", "multi-agent", "orchestration", "planning"],
+  "examples": [
+    "Create a new feature for user authentication",
+    "Fix the bug in the payment processing module",
+    "Refactor the database layer to use connection pooling"
+  ],
+  "inputModes": ["text/plain"],
+  "outputModes": ["text/plain", "application/json"]
+}
+```
+
+**Use this skill when:**
+- Breaking down complex projects into subtasks
+- Coordinating multiple agents
+- Planning multi-step workflows
+- Orchestrating parallel work streams
+
+### 2. Software Development
+
+```json
+{
+  "id": "software-development",
+  "name": "Software Development",
+  "description": "Implement code changes, write tests, and deliver working software using specialized CRAFTER agents",
+  "tags": ["coding", "implementation", "development", "engineering"],
+  "examples": [
+    "Implement a REST API endpoint for user management",
+    "Write unit tests for the authentication service",
+    "Add TypeScript types to the existing JavaScript codebase"
+  ],
+  "inputModes": ["text/plain"],
+  "outputModes": ["text/plain", "application/json"]
+}
+```
+
+**Use this skill when:**
+- Implementing new features
+- Writing code from specifications
+- Adding tests to existing code
+- Refactoring or modernizing code
+
+### 3. Code Verification
+
+```json
+{
+  "id": "code-verification",
+  "name": "Code Verification",
+  "description": "Review, validate, and verify code quality using specialized GATE agents",
+  "tags": ["review", "verification", "quality", "testing"],
+  "examples": [
+    "Review the pull request for security vulnerabilities",
+    "Verify the implementation meets the acceptance criteria",
+    "Check the code for performance issues"
+  ],
+  "inputModes": ["text/plain"],
+  "outputModes": ["text/plain", "application/json"]
+}
+```
+
+**Use this skill when:**
+- Reviewing pull requests
+- Verifying implementations
+- Running acceptance tests
+- Checking code quality
+
+## Capabilities
+
+### Streaming
+
+```json
+{
+  "streaming": true
+}
+```
+
+Routa supports **Server-Sent Events (SSE)** for real-time updates:
+
+```bash
+GET /api/a2a/rpc?sessionId=<id>
+```
+
+Events include:
+- Tool execution progress
+- Agent messages
+- Task state changes
+- Completion notifications
+
+### Push Notifications
+
+```json
+{
+  "pushNotifications": false
+}
+```
+
+Routa does not currently support push notifications. Clients should use SSE for real-time updates.
+
+## Transport Interfaces
+
+Routa provides two transport methods:
+
+### 1. JSON-RPC
+
+```json
+{
+  "url": "http://localhost:3000/api/a2a/rpc",
+  "transport": "JSONRPC"
+}
+```
+
+Primary method for agent communication. See [RPC Execution](/api/a2a/rpc) for details.
+
+### 2. HTTP
+
+```json
+{
+  "url": "http://localhost:3000/api/a2a/message",
+  "transport": "HTTP"
+}
+```
+
+Alternative HTTP transport for simple message exchange.
+
+## Input/Output Modes
+
+### Input Modes
+
+```json
+["text/plain"]
+```
+
+Routa accepts natural language text input.
+
+### Output Modes
+
+```json
+["text/plain", "application/json"]
+```
+
+Routa can respond with:
+- **text/plain** - Natural language responses
+- **application/json** - Structured data (task status, agent info, etc.)
+
+## Fetching the Agent Card
+
+### cURL
+
+```bash
+curl http://localhost:3000/api/a2a/card
+```
+
+### TypeScript
+
+```typescript
+import { getA2aSessionRegistry } from "@/core/a2a";
+
+const registry = getA2aSessionRegistry();
+const card = registry.generateAgentCard("http://localhost:3000");
+
+console.log(JSON.stringify(card, null, 2));
+```
+
+### JavaScript (Browser)
+
+```javascript
+fetch("http://localhost:3000/api/a2a/card")
+  .then(res => res.json())
+  .then(card => {
+    console.log("Agent:", card.name);
+    console.log("Skills:", card.skills.map(s => s.name));
+    console.log("RPC URL:", card.url);
+  });
+```
+
+## Skill Selection
+
+External systems can route requests to specific skills:
+
+```typescript
+import { mapAgentRoleToSkillId } from "@/core/a2a";
+import { AgentRole } from "@/core/models/agent";
+
+// Map Routa agent roles to A2A skills
+const skillId = mapAgentRoleToSkillId(AgentRole.CRAFTER);
+console.log(skillId); // "development"
+
+const gateSkillId = mapAgentRoleToSkillId(AgentRole.GATE);
+console.log(gateSkillId); // "verification"
+
+const routaSkillId = mapAgentRoleToSkillId(AgentRole.ROUTA);
+console.log(routaSkillId); // "coordination"
+```
+
+## Example: Discovering and Using Routa
+
+```typescript
+async function discoverAndUseRouta() {
+  // 1. Fetch agent card
+  const response = await fetch("http://localhost:3000/api/a2a/card");
+  const card = await response.json();
+  
+  console.log("Discovered:", card.name);
+  console.log("Protocol:", card.protocolVersion);
+  
+  // 2. Find a skill
+  const devSkill = card.skills.find(s => s.id === "software-development");
+  if (devSkill) {
+    console.log("\nSkill:", devSkill.name);
+    console.log("Description:", devSkill.description);
+    console.log("Examples:");
+    devSkill.examples.forEach(ex => console.log(`  - ${ex}`));
+  }
+  
+  // 3. Use the RPC endpoint
+  const rpcUrl = card.url;
+  const rpcResponse = await fetch(rpcUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      method: "session/new",
+      params: {
+        provider: "opencode",
+        workspaceId: "default",
+        message: "Implement user authentication",
+      },
+      id: 1,
+    }),
+  });
+  
+  const result = await rpcResponse.json();
+  console.log("\nSession created:", result.result.sessionId);
+}
+
+discoverAndUseRouta();
+```
+
+## Dynamic Base URL
+
+The agent card adapts to the request's base URL:
+
+```typescript
+const registry = getA2aSessionRegistry();
+
+// Local development
+const localCard = registry.generateAgentCard("http://localhost:3000");
+console.log(localCard.url); // http://localhost:3000/api/a2a/rpc
+
+// Production
+const prodCard = registry.generateAgentCard("https://routa.example.com");
+console.log(prodCard.url); // https://routa.example.com/api/a2a/rpc
+```
+
+The API route automatically detects the base URL from the request:
+
+```typescript
+// app/api/a2a/card/route.ts
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const baseUrl = `${url.protocol}//${url.host}`;
+  
+  const registry = getA2aSessionRegistry();
+  const card = registry.generateAgentCard(baseUrl);
+  
+  return Response.json(card);
+}
+```
+
+## Versioning
+
+### Protocol Version
+
+```json
+{
+  "protocolVersion": "0.3.0"
+}
+```
+
+Routa implements **A2A Protocol v0.3.0**.
+
+### Agent Version
+
+```json
+{
+  "version": "0.2.0"
+}
+```
+
+This reflects Routa's application version.
+
+## Documentation
+
+```json
+{
+  "documentationUrl": "http://localhost:3000/a2a"
+}
+```
+
+Full A2A documentation is available at the `/a2a` path.
+
+## CORS Support
+
+The agent card endpoint supports CORS for browser-based clients:
+
+```typescript
+// Automatic CORS headers
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET, OPTIONS
+Access-Control-Allow-Headers: Content-Type
+```
+
+## Caching
+
+The agent card is static and can be cached:
+
+```http
+Cache-Control: public, max-age=3600
+```
+
+Cache for up to 1 hour to reduce load.
+
+## Best Practices
+
+1. **Cache the agent card** - It rarely changes
+2. **Check protocol version** - Ensure compatibility
+3. **Inspect skills before use** - Validate Routa supports your use case
+4. **Use the correct RPC URL** - Don't hardcode endpoints
+5. **Handle version mismatches** - Gracefully degrade if protocol versions differ
+
+## Related
+
+- [A2A Overview](/api/a2a/overview)
+- [Session Management](/api/a2a/sessions)
+- [RPC Execution](/api/a2a/rpc)

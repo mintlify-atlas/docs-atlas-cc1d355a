@@ -1,0 +1,333 @@
+---
+title: Desktop App Usage Guide
+description: Complete guide to using the Routa Desktop application built with Tauri
+icon: desktop
+---
+
+## Overview
+
+Routa Desktop is the **recommended distribution** for Routa. It provides a native application experience with an embedded server, local database, and seamless agent orchestration.
+
+The desktop app is built using:
+- **Tauri 2.0** - Rust-based desktop framework
+- **SQLite** - Embedded database (no external setup required)
+- **Next.js** - Frontend bundled into the application
+- **Embedded Server** - Rust-based server running locally on port 3210
+
+## Installation
+
+### Prerequisites
+
+<Steps>
+  <Step title="Install Node.js">
+    Download and install [Node.js 22+](https://nodejs.org/) LTS version.
+  </Step>
+
+  <Step title="Install Rust (for building)">
+    If building from source, install Rust toolchain:
+    ```bash
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    ```
+  </Step>
+
+  <Step title="Install System Dependencies">
+    **macOS:**
+    ```bash
+    xcode-select --install
+    ```
+
+    **Linux (Ubuntu/Debian):**
+    ```bash
+    sudo apt-get install -y \
+      libwebkit2gtk-4.0-dev \
+      build-essential \
+      curl \
+      wget \
+      file \
+      libssl-dev \
+      libgtk-3-dev \
+      libayatana-appindicator3-dev \
+      librsvg2-dev
+    ```
+
+    **Windows:**
+    Install [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (usually pre-installed on Windows 11).
+  </Step>
+</Steps>
+
+### Building from Source
+
+<Steps>
+  <Step title="Clone and Install">
+    ```bash
+    git clone https://github.com/routa/routa-js.git
+    cd routa-js
+    npm install --legacy-peer-deps
+    ```
+  </Step>
+
+  <Step title="Run Development Build">
+    ```bash
+    npm run tauri dev
+    ```
+    This starts the desktop app with hot reload enabled.
+  </Step>
+
+  <Step title="Build Production Binary">
+    ```bash
+    npm run build:desktop
+    npm run tauri build
+    ```
+    Binaries will be in `apps/desktop/src-tauri/target/release/bundle/`
+  </Step>
+</Steps>
+
+## Configuration
+
+### Application Settings
+
+The desktop app stores configuration in:
+
+<CodeGroup>
+```bash macOS
+~/Library/Application Support/com.routa.desktop/
+```
+
+```bash Linux
+~/.config/routa-desktop/
+```
+
+```bash Windows
+%APPDATA%\com.routa.desktop\
+```
+</CodeGroup>
+
+### Database Location
+
+The SQLite database is stored at:
+- **Development**: `apps/desktop/src-tauri/routa.db`
+- **Production**: `{app_data}/routa.db`
+
+The database is created automatically on first launch.
+
+### Environment Variables
+
+Create a `.env` file in the project root:
+
+```bash .env
+# Anthropic API Key (required for Claude specialists)
+ANTHROPIC_AUTH_TOKEN=sk-ant-...
+
+# Optional: Custom API endpoint
+# ANTHROPIC_BASE_URL=https://api.anthropic.com
+
+# Optional: Model overrides
+# ANTHROPIC_MODEL=claude-4-sonnet-20250514
+# ANTHROPIC_SMALL_FAST_MODEL=claude-4-haiku-20250514
+
+# Database (SQLite by default)
+ROUTA_DB_DRIVER=sqlite
+ROUTA_DB_PATH=./routa.db
+
+# Server configuration
+PORT=3210
+HOST=127.0.0.1
+```
+
+## Features
+
+### Window Configuration
+
+The desktop app window is configured in `apps/desktop/src-tauri/tauri.conf.json`:
+
+```json tauri.conf.json
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Routa",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true
+      }
+    ]
+  }
+}
+```
+
+### Tauri Plugins
+
+The desktop app includes the following plugins:
+
+<CardGroup cols={2}>
+  <Card title="Dialog" icon="message-lines">
+    Native file/folder picker dialogs
+  </Card>
+  <Card title="File System" icon="folder-open">
+    Read/write files with permission prompts
+  </Card>
+  <Card title="Notifications" icon="bell">
+    System notifications for agent events
+  </Card>
+  <Card title="Process" icon="microchip">
+    Spawn and manage child processes
+  </Card>
+  <Card title="Shell" icon="terminal">
+    Execute shell commands securely
+  </Card>
+  <Card title="SQL" icon="database">
+    Direct SQLite database access
+  </Card>
+</CardGroup>
+
+### Agent Spawning
+
+The desktop app can spawn AI agents locally:
+
+- **Claude Code** - via `@anthropic-ai/claude-agent-sdk`
+- **OpenCode** - via `opencode-ai` (if installed)
+- **Codex** - via `@openai/codex` (if installed)
+- **Gemini** - via `@google/generative-ai-cli` (if installed)
+
+Agents run as child processes with MCP connection to the embedded server at `http://127.0.0.1:3210/mcp`.
+
+## Usage Workflows
+
+### Starting a Coordination Session
+
+<Steps>
+  <Step title="Launch the App">
+    Open Routa Desktop from your applications folder or run `npm run tauri dev`.
+  </Step>
+
+  <Step title="Create a Workspace">
+    Click "New Workspace" and select a local directory or import a GitHub repository.
+  </Step>
+
+  <Step title="Start a Conversation">
+    Type your task description in the chat panel. The coordinator will parse your intent and create a structured plan.
+  </Step>
+
+  <Step title="Monitor Agent Activity">
+    Watch the Agents panel to see spawned specialists and their progress.
+  </Step>
+
+  <Step title="Review Results">
+    Verification agents (GATE) will validate the work before marking tasks complete.
+  </Step>
+</Steps>
+
+### Using Custom Specialists
+
+Custom specialists are loaded from:
+1. Database (highest priority)
+2. User files at `~/.routa/specialists/*.md` or `~/.routa/specialists/*.yaml`
+3. Bundled specialists in `resources/specialists/`
+4. Hardcoded fallbacks
+
+See [Custom Specialists](/guides/custom-specialists) for details.
+
+### Managing MCP Servers
+
+Add custom MCP servers via the Settings panel:
+1. Open Settings → MCP Servers
+2. Click "Add Server"
+3. Configure stdio, HTTP, or SSE connection
+4. Enable the server
+5. Restart agents to use the new MCP tools
+
+See [Custom MCP Servers](/guides/custom-mcp-servers) for configuration examples.
+
+## Troubleshooting
+
+### App Won't Launch
+
+<AccordionGroup>
+  <Accordion title="macOS: 'App is damaged' error">
+    Remove the quarantine attribute:
+    ```bash
+    xattr -cr /Applications/Routa.app
+    ```
+  </Accordion>
+
+  <Accordion title="Linux: Missing shared libraries">
+    Install WebKit dependencies:
+    ```bash
+    sudo apt-get install -y libwebkit2gtk-4.0-37
+    ```
+  </Accordion>
+
+  <Accordion title="Windows: WebView2 not found">
+    Download and install [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
+  </Accordion>
+</AccordionGroup>
+
+### Database Issues
+
+```bash
+# Reset the database (deletes all data)
+rm ~/Library/Application\ Support/com.routa.desktop/routa.db
+
+# Or specify a new database location in .env
+ROUTA_DB_PATH=/custom/path/routa.db
+```
+
+### Port Conflicts
+
+If port 3210 is in use, change it in `.env`:
+
+```bash
+PORT=3211
+```
+
+Restart the app for changes to take effect.
+
+### Agent Spawn Failures
+
+1. Check that API keys are set in `.env`
+2. Verify agent CLIs are installed (`opencode-ai`, `@openai/codex`, etc.)
+3. Check logs in the console (View → Developer → Developer Tools)
+
+## CLI Integration
+
+The desktop distribution includes a `routa` CLI:
+
+```bash
+# Full coordinator flow
+routa -p "Implement feature X"
+
+# Agent management
+routa agent list
+routa agent create --specialist CRAFTER
+routa agent status <agent-id>
+
+# Task management
+routa task list
+routa task create --title "Task title" --body "Task body"
+routa task get <task-id>
+
+# Interactive chat
+routa chat
+```
+
+See the CLI section in [Architecture](/concepts/architecture) for more commands.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Custom Specialists" icon="user-gear" href="/guides/custom-specialists">
+    Create your own specialist roles
+  </Card>
+  <Card title="Custom MCP Servers" icon="plug" href="/guides/custom-mcp-servers">
+    Integrate external MCP tools
+  </Card>
+  <Card title="Workflows" icon="sitemap" href="/guides/workflows">
+    Automate multi-step processes
+  </Card>
+  <Card title="GitHub Integration" icon="github" href="/guides/github-virtual-workspace">
+    Work with remote repositories
+  </Card>
+</CardGroup>

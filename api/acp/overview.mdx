@@ -1,0 +1,137 @@
+---
+title: "ACP Overview"
+description: "Understanding the Agent Client Protocol in Routa"
+icon: "network-wired"
+---
+
+## What is ACP?
+
+The **Agent Client Protocol (ACP)** is Routa's unified interface for communicating with AI coding agents. It provides a standardized JSON-RPC protocol that allows Routa to orchestrate multiple agent providers (OpenCode, Claude Code, Gemini, Copilot, etc.) through a consistent API.
+
+## Architecture
+
+Routa's ACP implementation consists of several key components:
+
+### Core Components
+
+- **ACP Session Manager** (`src/core/acp/acp-session-manager.ts`) - Manages active agent sessions
+- **ACP Process Manager** (`src/core/acp/acp-process-manager.ts`) - Spawns and controls agent processes
+- **Runtime Manager** (`src/core/acp/runtime-manager.ts`) - Manages Node.js and Python runtimes
+- **Provider Registry** (`src/core/acp/provider-registry.ts`) - Registry of available agent providers
+- **ACP Registry** (`src/core/acp/acp-registry.ts`) - Fetches agent definitions from the ACP Registry CDN
+
+### Provider Adapters
+
+Routa uses provider-specific adapters to normalize different agent protocols:
+
+- **Claude Code Adapter** - Handles Claude's stream-json protocol
+- **OpenCode Adapter** - Standard ACP protocol implementation
+- **Standard ACP Adapter** - Generic adapter for compliant agents
+
+Each adapter normalizes provider-specific messages into a common format:
+
+```typescript
+interface NormalizedSessionUpdate {
+  sessionId: string;
+  type: "tool_call" | "tool_call_update" | "agent_message" | "agent_thought";
+  toolCall?: NormalizedToolCall;
+  message?: { role: string; content: string; isChunk?: boolean };
+  rawNotification: unknown;
+}
+```
+
+## JSON-RPC Methods
+
+Routa implements the following ACP methods:
+
+### Session Management
+
+- `initialize` - Initialize the ACP connection
+- `session/new` - Create a new agent session
+- `session/prompt` - Send a message to an agent session
+- `session/cancel` - Cancel an active session
+- `session/load` - Load a persisted session
+- `session/set_mode` - Change the session mode (e.g., orchestrator)
+
+### Provider Information
+
+- `_providers/list` - List available providers and their models
+
+### Event Streaming
+
+Routa provides Server-Sent Events (SSE) for real-time session updates:
+
+```typescript
+GET /api/acp?sessionId=<id>
+```
+
+Events include:
+- Tool calls and their execution status
+- Agent messages and thoughts
+- Session state changes
+
+## Supported Providers
+
+Routa supports multiple ACP-compliant agents:
+
+| Provider | ID | Description |
+|----------|----|-----------|
+| OpenCode | `opencode` | OpenCode AI coding agent |
+| Claude Code | `claude` | Anthropic Claude Code (native ACP) |
+| Gemini | `gemini` | Google Gemini CLI |
+| Codex | `codex` | OpenAI Codex CLI |
+| GitHub Copilot | `copilot` | GitHub Copilot CLI |
+| Augment | `auggie` | Augment Code's AI agent |
+| Kimi | `kimi` | Moonshot AI's Kimi CLI |
+| Kiro | `kiro` | Amazon Kiro AI agent |
+
+See [Provider Registry](/api/acp/registry) for details on provider configuration.
+
+## Usage Example
+
+### Creating an ACP Session
+
+```typescript
+import { AcpSessionManager } from "@/core/acp";
+
+const manager = new AcpSessionManager();
+
+// Create a new session with OpenCode
+const sessionId = await manager.createSession({
+  provider: "opencode",
+  workspaceId: "my-workspace",
+  workspacePath: "/path/to/project",
+  sessionMode: "orchestrator",
+});
+
+// Send a message
+const response = await manager.sendMessage(sessionId, {
+  role: "user",
+  content: "Add authentication to the API",
+});
+
+console.log(response);
+```
+
+### Using the JSON-RPC API
+
+```bash
+curl -X POST http://localhost:3000/api/acp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "session/new",
+    "params": {
+      "provider": "opencode",
+      "workspaceId": "default",
+      "message": "Fix the login bug"
+    },
+    "id": 1
+  }'
+```
+
+## Next Steps
+
+- [Runtime Management](/api/acp/runtime) - Managing Node.js and Python runtimes
+- [ACP Registry](/api/acp/registry) - Using the ACP agent registry
+- [Installing Agents](/api/acp/install) - Installing and configuring agents

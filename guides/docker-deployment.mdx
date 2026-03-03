@@ -1,0 +1,557 @@
+---
+title: Docker Deployment Guide
+description: Deploy Routa using Docker and Docker Compose with SQLite or PostgreSQL
+icon: docker
+---
+
+## Overview
+
+Docker deployment provides the most complete Routa experience with:
+- **Full agent support** (persistent processes for ACP agents)
+- **Choice of database** (SQLite or PostgreSQL)
+- **Isolated environment** (no dependency conflicts)
+- **Easy scaling** (compose profiles for different configurations)
+
+## Quick Start
+
+### SQLite (Default)
+
+No external database required - perfect for single-user deployments.
+
+```bash
+# Clone the repository
+git clone https://github.com/routa/routa-js.git
+cd routa-js
+
+# Build and start
+docker compose up --build
+```
+
+Access Routa at `http://localhost:3000`
+
+Health check: `http://localhost:3000/api/health`
+
+### PostgreSQL (Recommended for Production)
+
+Use the bundled PostgreSQL container for multi-user deployments.
+
+<Steps>
+  <Step title="Create .env file">
+    ```bash .env
+    ROUTA_DB_DRIVER=postgres
+    DATABASE_URL=postgresql://routa:routa_secret@postgres:5432/routa
+    POSTGRES_PASSWORD=routa_secret
+    ```
+  </Step>
+
+  <Step title="Start with Postgres profile">
+    ```bash
+    docker compose --profile postgres up --build
+    ```
+  </Step>
+</Steps>
+
+## Docker Compose Configuration
+
+The project includes a production-ready `docker-compose.yml`:
+
+```yaml docker-compose.yml
+services:
+  # ── Next.js application ──
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      # SQLite mode (default) — no external DB required
+      ROUTA_DB_DRIVER: ${ROUTA_DB_DRIVER:-sqlite}
+      ROUTA_DB_PATH: /app/data/routa.db
+      # Set DATABASE_URL (and ROUTA_DB_DRIVER=postgres) in .env to use Postgres.
+      DATABASE_URL: ${DATABASE_URL:-}
+    volumes:
+      - routa_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── PostgreSQL (optional) ──
+  postgres:
+    image: postgres:16-alpine
+    profiles:
+      - postgres
+    environment:
+      POSTGRES_DB: routa
+      POSTGRES_USER: routa
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-routa_secret}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U routa -d routa"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  routa_data:
+  postgres_data:
+```
+
+## Dockerfile Explanation
+
+The multi-stage Dockerfile optimizes image size and build time:
+
+```dockerfile Dockerfile
+# Stage 1: Install dependencies
+FROM node:22-alpine AS deps
+RUN apk add --no-cache libc6-compat python3 make g++
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --legacy-peer-deps
+
+# Stage 2: Build application
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build:docker
+
+# Stage 3: Production runner
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV ROUTA_DB_DRIVER=sqlite
+ENV ROUTA_DB_PATH=/app/data/routa.db
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser  --system --uid 1001 nextjs
+
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY --from=builder /app/public ./public
+
+RUN mkdir -p /app/data && chown nextjs:nodejs /app/data
+
+USER nextjs
+EXPOSE 3000
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+CMD ["node", "server.js"]
+```
+
+**Key features:**
+- Uses `standalone` output mode (includes only necessary files)
+- Alpine Linux base (smaller image size)
+- Non-root user for security
+- Persistent data volume at `/app/data`
+
+## Environment Configuration
+
+### SQLite Configuration
+
+```bash .env
+# Database
+ROUTA_DB_DRIVER=sqlite
+ROUTA_DB_PATH=/app/data/routa.db
+
+# Anthropic API
+ANTHROPIC_AUTH_TOKEN=sk-ant-...
+
+# Optional: Model configuration
+ANTHROPIC_MODEL=claude-4-sonnet-20250514
+ANTHROPIC_SMALL_FAST_MODEL=claude-4-haiku-20250514
+```
+
+### PostgreSQL Configuration
+
+```bash .env
+# Database
+ROUTA_DB_DRIVER=postgres
+DATABASE_URL=postgresql://routa:routa_secret@postgres:5432/routa
+POSTGRES_PASSWORD=routa_secret
+
+# Anthropic API
+ANTHROPIC_AUTH_TOKEN=sk-ant-...
+
+# Optional: Custom endpoint
+# ANTHROPIC_BASE_URL=https://api.anthropic.com
+
+# Optional: Request timeout
+# API_TIMEOUT_MS=600000
+
+# Optional: GitHub integration
+# GITHUB_TOKEN=ghp_...
+# GITHUB_WEBHOOK_SECRET=your-secret
+```
+
+### External PostgreSQL
+
+To use an external PostgreSQL database (e.g., Neon, Supabase):
+
+```bash .env
+ROUTA_DB_DRIVER=postgres
+DATABASE_URL=postgresql://user:password@external-host:5432/routa?sslmode=require
+
+# Don't start the bundled postgres service
+# Use: docker compose up app
+```
+
+## Docker Compose Profiles
+
+### Default Profile (SQLite)
+
+```bash
+# Start only the app service with SQLite
+docker compose up
+```
+
+### Postgres Profile
+
+```bash
+# Start app + postgres services
+docker compose --profile postgres up
+```
+
+### Custom Profiles
+
+Add custom services to `docker-compose.yml`:
+
+```yaml docker-compose.yml
+services:
+  redis:
+    image: redis:7-alpine
+    profiles:
+      - cache
+    ports:
+      - "6379:6379"
+
+  nginx:
+    image: nginx:alpine
+    profiles:
+      - production
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+```
+
+Start with multiple profiles:
+```bash
+docker compose --profile postgres --profile cache up
+```
+
+## Volume Management
+
+### Backup SQLite Database
+
+```bash
+# Export volume to tar
+docker run --rm \
+  -v routa-js_routa_data:/data \
+  -v $(pwd):/backup \
+  alpine tar czf /backup/routa-data-backup.tar.gz -C /data .
+```
+
+### Restore SQLite Database
+
+```bash
+# Import tar to volume
+docker run --rm \
+  -v routa-js_routa_data:/data \
+  -v $(pwd):/backup \
+  alpine tar xzf /backup/routa-data-backup.tar.gz -C /data
+```
+
+### Backup PostgreSQL
+
+```bash
+# Dump database
+docker compose exec postgres pg_dump -U routa routa > routa-backup.sql
+
+# Restore database
+docker compose exec -T postgres psql -U routa routa < routa-backup.sql
+```
+
+### Inspect Volumes
+
+```bash
+# List volumes
+docker volume ls
+
+# Inspect volume
+docker volume inspect routa-js_routa_data
+
+# Access volume filesystem
+docker run --rm -it \
+  -v routa-js_routa_data:/data \
+  alpine sh
+```
+
+## Production Deployment
+
+### Using Docker Compose in Production
+
+```bash
+# Build images
+docker compose build
+
+# Start services in detached mode
+docker compose --profile postgres up -d
+
+# View logs
+docker compose logs -f app
+
+# Stop services
+docker compose down
+
+# Stop and remove volumes (WARNING: deletes data)
+docker compose down -v
+```
+
+### Environment-specific Compose Files
+
+Create `docker-compose.prod.yml`:
+
+```yaml docker-compose.prod.yml
+services:
+  app:
+    restart: always
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+
+  postgres:
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+```
+
+Use with:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile postgres up -d
+```
+
+### Reverse Proxy with Nginx
+
+```nginx nginx.conf
+upstream routa_backend {
+    server localhost:3000;
+}
+
+server {
+    listen 80;
+    server_name routa.yourdomain.com;
+
+    location / {
+        proxy_pass http://routa_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /api/mcp {
+        proxy_pass http://routa_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }
+}
+```
+
+Add to `docker-compose.yml`:
+```yaml
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+```
+
+## Monitoring and Logs
+
+### View Logs
+
+```bash
+# Follow logs for all services
+docker compose logs -f
+
+# Follow logs for specific service
+docker compose logs -f app
+
+# Last 100 lines
+docker compose logs --tail=100 app
+
+# Logs since timestamp
+docker compose logs --since 2026-03-03T12:00:00 app
+```
+
+### Health Checks
+
+```bash
+# Check container health
+docker compose ps
+
+# Inspect health status
+docker inspect --format='{{json .State.Health}}' routa-js-app-1 | jq
+
+# Manual health check
+curl http://localhost:3000/api/health
+```
+
+### Resource Usage
+
+```bash
+# Live stats
+docker stats
+
+# Container resource usage
+docker compose ps -q | xargs docker stats --no-stream
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Container exits immediately">
+    Check logs for errors:
+    ```bash
+    docker compose logs app
+    ```
+    Common issues:
+    - Missing environment variables
+    - Database connection failure
+    - Port already in use
+  </Accordion>
+
+  <Accordion title="Database connection errors">
+    **SQLite:**
+    - Ensure volume is mounted: `-v routa_data:/app/data`
+    - Check file permissions: `ls -la` inside container
+
+    **PostgreSQL:**
+    - Wait for postgres health check: `docker compose ps`
+    - Verify `DATABASE_URL` matches postgres service name
+    - Check postgres logs: `docker compose logs postgres`
+  </Accordion>
+
+  <Accordion title="Port conflicts">
+    Change ports in `docker-compose.yml`:
+    ```yaml
+    ports:
+      - "3001:3000"  # Host:Container
+    ```
+  </Accordion>
+
+  <Accordion title="Build failures">
+    Clear Docker build cache:
+    ```bash
+    docker compose build --no-cache
+    ```
+  </Accordion>
+
+  <Accordion title="Volume permission errors">
+    Fix volume ownership:
+    ```bash
+    docker compose exec app chown -R nextjs:nodejs /app/data
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Advanced Configuration
+
+### Custom Build Args
+
+Modify `docker-compose.yml`:
+
+```yaml
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NODE_VERSION: 22
+        BUILD_DATE: ${BUILD_DATE}
+```
+
+### Multi-Platform Builds
+
+```bash
+# Build for multiple architectures
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  -t routa:latest \
+  .
+```
+
+### Development with Hot Reload
+
+Create `docker-compose.dev.yml`:
+
+```yaml docker-compose.dev.yml
+services:
+  app:
+    build:
+      target: deps
+    command: npm run dev
+    volumes:
+      - .:/app
+      - /app/node_modules
+    environment:
+      NODE_ENV: development
+```
+
+Run with:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Custom Specialists" icon="user-gear" href="/guides/custom-specialists">
+    Define custom agent roles
+  </Card>
+  <Card title="Custom MCP Servers" icon="plug" href="/guides/custom-mcp-servers">
+    Integrate external MCP tools
+  </Card>
+  <Card title="Workflows" icon="sitemap" href="/guides/workflows">
+    Automate multi-step processes
+  </Card>
+  <Card title="GitHub Integration" icon="github" href="/guides/github-virtual-workspace">
+    Import GitHub repositories
+  </Card>
+</CardGroup>

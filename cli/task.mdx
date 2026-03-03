@@ -1,0 +1,366 @@
+---
+title: Task Commands
+description: Manage tasks in Routa workspaces via CLI
+---
+
+## Overview
+
+The `routa task` command group provides tools for managing tasks in Routa workspaces. Tasks represent discrete units of work that can be assigned to agents, tracked, and coordinated as part of larger workflows.
+
+## Task Statuses
+
+Tasks progress through several statuses:
+
+| Status | Description |
+|--------|-------------|
+| `PENDING` | Task created but not yet started |
+| `IN_PROGRESS` | Task is actively being worked on |
+| `REVIEW_REQUIRED` | Task completed and awaiting review |
+| `COMPLETED` | Task successfully finished |
+| `NEEDS_FIX` | Task requires corrections or improvements |
+| `BLOCKED` | Task cannot proceed due to dependencies |
+| `CANCELLED` | Task was cancelled |
+
+## Commands
+
+### List Tasks
+
+List all tasks in a workspace:
+
+```bash
+routa task list [OPTIONS]
+```
+
+**Options:**
+
+- `--workspace-id <ID>` - Workspace ID (default: `default`)
+
+**Example:**
+
+```bash
+routa task list --workspace-id my-project
+```
+
+**Output:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "tasks": [
+      {
+        "id": "task_abc123",
+        "title": "Implement user authentication",
+        "objective": "Add OAuth 2.0 login with Google and GitHub providers",
+        "status": "IN_PROGRESS",
+        "assignedTo": "agent_def456",
+        "workspaceId": "default",
+        "createdAt": "2026-03-03T10:00:00Z",
+        "updatedAt": "2026-03-03T11:30:00Z"
+      },
+      {
+        "id": "task_xyz789",
+        "title": "Add password reset flow",
+        "objective": "Implement email-based password reset with security tokens",
+        "status": "PENDING",
+        "assignedTo": null,
+        "workspaceId": "default",
+        "createdAt": "2026-03-03T10:05:00Z",
+        "updatedAt": "2026-03-03T10:05:00Z"
+      }
+    ]
+  }
+}
+```
+
+### Create Task
+
+Create a new task in a workspace:
+
+```bash
+routa task create [OPTIONS]
+```
+
+**Options:**
+
+- `--title <TITLE>` - Task title (required)
+- `--objective <TEXT>` - Task objective description (required)
+- `--workspace-id <ID>` - Workspace ID (default: `default`)
+- `--scope <TEXT>` - Task scope description (optional)
+- `--acceptance-criteria <CRITERIA>` - Comma-separated acceptance criteria (optional)
+
+**Examples:**
+
+```bash
+# Basic task creation
+routa task create \
+  --title "Add user profile page" \
+  --objective "Create a profile page showing user info and activity" \
+  --workspace-id default
+
+# Task with scope and acceptance criteria
+routa task create \
+  --title "Implement search feature" \
+  --objective "Add full-text search across documents" \
+  --workspace-id my-project \
+  --scope "Search should cover titles, content, and metadata" \
+  --acceptance-criteria "Search returns results in <200ms,Supports fuzzy matching,Results are paginated"
+```
+
+**Output:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "taskId": "task_new123",
+    "title": "Add user profile page",
+    "objective": "Create a profile page showing user info and activity",
+    "status": "PENDING",
+    "workspaceId": "default",
+    "scope": null,
+    "acceptanceCriteria": [],
+    "createdAt": "2026-03-03T12:00:00Z"
+  }
+}
+```
+
+### Get Task
+
+Get details of a specific task:
+
+```bash
+routa task get --id <TASK_ID>
+```
+
+**Options:**
+
+- `--id <ID>` - Task ID (required)
+
+**Example:**
+
+```bash
+routa task get --id task_abc123
+```
+
+**Output:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "id": "task_abc123",
+    "title": "Implement user authentication",
+    "objective": "Add OAuth 2.0 login with Google and GitHub providers",
+    "status": "IN_PROGRESS",
+    "assignedTo": "agent_def456",
+    "workspaceId": "default",
+    "scope": "Cover login, logout, and session management",
+    "acceptanceCriteria": [
+      "Users can log in with Google",
+      "Users can log in with GitHub",
+      "Sessions persist across browser restarts",
+      "Logout clears all session data"
+    ],
+    "dependencies": [],
+    "blockers": [],
+    "createdAt": "2026-03-03T10:00:00Z",
+    "updatedAt": "2026-03-03T11:30:00Z",
+    "startedAt": "2026-03-03T10:15:00Z",
+    "completedAt": null
+  }
+}
+```
+
+### Update Task Status
+
+Update the status of a task:
+
+```bash
+routa task update-status [OPTIONS]
+```
+
+**Options:**
+
+- `--id <ID>` - Task ID (required)
+- `--status <STATUS>` - New status (required): `PENDING`, `IN_PROGRESS`, `REVIEW_REQUIRED`, `COMPLETED`, `NEEDS_FIX`, `BLOCKED`, `CANCELLED`
+- `--agent-id <ID>` - Agent ID performing the update (required)
+- `--summary <TEXT>` - Optional completion summary
+
+**Examples:**
+
+```bash
+# Mark task as in progress
+routa task update-status \
+  --id task_abc123 \
+  --status IN_PROGRESS \
+  --agent-id agent_def456
+
+# Mark task as completed with summary
+routa task update-status \
+  --id task_abc123 \
+  --status COMPLETED \
+  --agent-id agent_def456 \
+  --summary "Implemented OAuth login for Google and GitHub. All tests passing."
+
+# Mark task as needing fixes
+routa task update-status \
+  --id task_abc123 \
+  --status NEEDS_FIX \
+  --agent-id agent_gate \
+  --summary "Login works but session timeout is too short"
+```
+
+**Output:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "taskId": "task_abc123",
+    "status": "COMPLETED",
+    "updatedAt": "2026-03-03T14:30:00Z",
+    "summary": "Implemented OAuth login for Google and GitHub. All tests passing."
+  }
+}
+```
+
+## Task Workflows
+
+### Typical Task Lifecycle
+
+Here's a typical workflow for a task:
+
+```bash
+# 1. Create task
+TASK_ID=$(routa task create \
+  --title "Add export feature" \
+  --objective "Allow users to export data to CSV" \
+  --workspace-id project | jq -r '.result.taskId')
+
+echo "Created task: $TASK_ID"
+
+# 2. Assign to agent and mark in progress
+AGENT_ID="agent_crafter_001"
+routa task update-status \
+  --id "$TASK_ID" \
+  --status IN_PROGRESS \
+  --agent-id "$AGENT_ID"
+
+# 3. Agent completes work, mark for review
+routa task update-status \
+  --id "$TASK_ID" \
+  --status REVIEW_REQUIRED \
+  --agent-id "$AGENT_ID" \
+  --summary "Export feature implemented with CSV and JSON formats"
+
+# 4. Review and approve
+REVIEWER_ID="agent_gate_001"
+routa task update-status \
+  --id "$TASK_ID" \
+  --status COMPLETED \
+  --agent-id "$REVIEWER_ID" \
+  --summary "Approved: All acceptance criteria met"
+```
+
+### Handling Task Feedback
+
+When a task needs fixes:
+
+```bash
+# Reviewer marks task as needing fixes
+routa task update-status \
+  --id task_abc123 \
+  --status NEEDS_FIX \
+  --agent-id agent_gate \
+  --summary "Export fails for large datasets. Need pagination."
+
+# Developer fixes and resubmits
+routa task update-status \
+  --id task_abc123 \
+  --status IN_PROGRESS \
+  --agent-id agent_crafter
+
+routa task update-status \
+  --id task_abc123 \
+  --status REVIEW_REQUIRED \
+  --agent-id agent_crafter \
+  --summary "Added pagination for exports over 1000 rows"
+```
+
+## Task Dependencies
+
+While the CLI doesn't have a direct command for setting dependencies, you can manage them through the workspace:
+
+```bash
+# Check task details including dependencies
+routa task get --id task_abc123 | jq '.result.dependencies'
+
+# Monitor blocked tasks
+routa task list --workspace-id project | \
+  jq '.result.tasks[] | select(.status == "BLOCKED")'
+```
+
+## Filtering and Monitoring
+
+Use `jq` to filter tasks by various criteria:
+
+```bash
+# Get all pending tasks
+routa task list | jq '.result.tasks[] | select(.status == "PENDING")'
+
+# Get tasks assigned to specific agent
+routa task list | jq '.result.tasks[] | select(.assignedTo == "agent_def456")'
+
+# Get completed tasks from today
+TODAY=$(date -u +"%Y-%m-%d")
+routa task list | jq --arg date "$TODAY" \
+  '.result.tasks[] | select(.status == "COMPLETED" and (.completedAt | startswith($date)))'
+
+# Count tasks by status
+routa task list | jq '.result.tasks | group_by(.status) | map({status: .[0].status, count: length})'
+```
+
+## Integration with Agents
+
+Tasks and agents work together:
+
+```bash
+# Get agent's current task
+AGENT_ID="agent_def456"
+CURRENT_TASK=$(routa agent status --id "$AGENT_ID" | jq -r '.result.currentTask')
+
+if [ "$CURRENT_TASK" != "null" ]; then
+  echo "Agent is working on:"
+  routa task get --id "$CURRENT_TASK" | jq '.result | {title, status, objective}'
+else
+  echo "Agent is idle"
+fi
+```
+
+## Bulk Operations
+
+Create multiple tasks from a file:
+
+```bash
+#!/bin/bash
+# tasks.txt format: TITLE|OBJECTIVE
+
+while IFS='|' read -r title objective; do
+  routa task create \
+    --title "$title" \
+    --objective "$objective" \
+    --workspace-id project
+  echo "Created: $title"
+done < tasks.txt
+```
+
+## Next Steps
+
+- Learn about [Agent commands](/cli/agent) to assign tasks
+- Try [Interactive chat](/cli/chat) to discuss tasks with agents
+- Explore [Workflow automation](/cli/workflow) for complex task orchestration

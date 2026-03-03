@@ -1,0 +1,810 @@
+---
+title: Installation
+description: Complete installation guide for Routa. Deploy as a desktop app, web application, or Docker container with PostgreSQL or SQLite.
+---
+
+# Installation Guide
+
+Routa supports three deployment methods:
+
+1. **Desktop Application** (Recommended) — Tauri-based native app with embedded Rust server
+2. **Web Deployment** — Next.js application on Vercel or self-hosted
+3. **Docker** — Containerized deployment with PostgreSQL or SQLite
+
+<CardGroup cols={3}>
+  <Card title="Desktop" icon="desktop" iconType="solid">
+    Native performance, embedded database, offline capable
+  </Card>
+  <Card title="Web" icon="cloud" iconType="solid">
+    Serverless deployment, multi-user, PostgreSQL backend
+  </Card>
+  <Card title="Docker" icon="docker" iconType="duotone">
+    Self-hosted, isolated, easy scaling
+  </Card>
+</CardGroup>
+
+## System Requirements
+
+<Tabs>
+  <Tab title="Desktop">
+    ### Desktop Application
+    
+    - **Operating System**: Windows 10+, macOS 11+, or Linux (Ubuntu 20.04+)
+    - **Node.js**: 22.x or later
+    - **Rust**: 1.70+ (installed automatically by rustup)
+    - **Memory**: 4GB RAM minimum, 8GB recommended
+    - **Disk Space**: 500MB for application + workspace storage
+    
+    #### Platform-Specific Dependencies
+    
+    <Accordion title="Linux" icon="linux">
+      ```bash Ubuntu/Debian
+      sudo apt update
+      sudo apt install -y \
+        libwebkit2gtk-4.0-dev \
+        build-essential \
+        curl \
+        wget \
+        file \
+        libssl-dev \
+        libgtk-3-dev \
+        libayatana-appindicator3-dev \
+        librsvg2-dev
+      ```
+      
+      ```bash Fedora
+      sudo dnf install -y \
+        webkit2gtk4.0-devel \
+        openssl-devel \
+        curl \
+        wget \
+        file \
+        gtk3-devel \
+        librsvg2-devel
+      ```
+    </Accordion>
+    
+    <Accordion title="macOS" icon="apple">
+      - Install Xcode Command Line Tools:
+      ```bash
+      xcode-select --install
+      ```
+      
+      - Install Homebrew (if not already installed):
+      ```bash
+      /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+      ```
+    </Accordion>
+    
+    <Accordion title="Windows" icon="windows">
+      - Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/)
+      - During installation, select "Desktop development with C++"
+      - Install [WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (usually pre-installed on Windows 11)
+    </Accordion>
+  </Tab>
+  
+  <Tab title="Web">
+    ### Web Deployment
+    
+    - **Node.js**: 22.x or later
+    - **Database**: PostgreSQL 14+ or SQLite
+    - **Memory**: 512MB minimum for serverless, 2GB for self-hosted
+    - **Platform**: Vercel, Netlify, or any Node.js hosting
+  </Tab>
+  
+  <Tab title="Docker">
+    ### Docker Deployment
+    
+    - **Docker**: 20.10+ with Docker Compose
+    - **Memory**: 2GB minimum, 4GB recommended
+    - **Disk Space**: 1GB for images + workspace storage
+    - **Database**: SQLite (bundled) or PostgreSQL (optional)
+  </Tab>
+</Tabs>
+
+## Installation Methods
+
+<Tabs>
+  <Tab title="Desktop">
+    ## Desktop Application
+
+    <Steps>
+      <Step title="Install Rust">
+        If you don't have Rust installed:
+        
+        <CodeGroup>
+        ```bash Linux/macOS
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+        source $HOME/.cargo/env
+        ```
+        
+        ```powershell Windows
+        # Download and run rustup-init.exe from:
+        # https://rustup.rs/
+        ```
+        </CodeGroup>
+        
+        Verify installation:
+        ```bash
+        rustc --version
+        cargo --version
+        ```
+      </Step>
+
+      <Step title="Clone Repository">
+        ```bash
+        git clone https://github.com/yourusername/routa.git
+        cd routa
+        ```
+      </Step>
+
+      <Step title="Install Node Dependencies">
+        <CodeGroup>
+        ```bash npm
+        npm install --legacy-peer-deps
+        ```
+        
+        ```bash pnpm
+        pnpm install --shamefully-hoist
+        ```
+        
+        ```bash yarn
+        yarn install
+        ```
+        </CodeGroup>
+        
+        <Note>
+          The `--legacy-peer-deps` flag is required for npm due to peer dependency conflicts in some dependencies.
+        </Note>
+      </Step>
+
+      <Step title="Build and Run">
+        <Tabs>
+          <Tab title="Development">
+            ```bash
+            npm run tauri dev
+            ```
+            
+            This starts the desktop app in development mode with hot reload.
+          </Tab>
+          
+          <Tab title="Production Build">
+            ```bash
+            npm run tauri build
+            ```
+            
+            The installer will be created in:
+            - **Windows**: `apps/desktop/src-tauri/target/release/bundle/msi/`
+            - **macOS**: `apps/desktop/src-tauri/target/release/bundle/dmg/`
+            - **Linux**: `apps/desktop/src-tauri/target/release/bundle/deb/` or `.AppImage`
+          </Tab>
+        </Tabs>
+      </Step>
+
+      <Step title="Configure on First Launch">
+        On first launch, you'll need to:
+        
+        1. **Set API Keys**: Configure your AI provider API keys in Settings
+        2. **Create Workspace**: Set up your first workspace directory
+        3. **Install ACP Agents**: (Optional) Install OpenCode, Claude CLI, or other agents
+        
+        The SQLite database will be automatically created at:
+        - **Windows**: `%APPDATA%/com.routa.app/routa.db`
+        - **macOS**: `~/Library/Application Support/com.routa.app/routa.db`
+        - **Linux**: `~/.local/share/com.routa.app/routa.db`
+      </Step>
+    </Steps>
+
+    ### CLI Installation (Optional)
+
+    Build the Rust CLI for terminal-based coordination:
+
+    ```bash
+    cargo build --release --manifest-path crates/routa-cli/Cargo.toml
+    ```
+
+    The binary will be at `crates/routa-cli/target/release/routa`. Add it to your PATH:
+
+    ```bash
+    # Linux/macOS
+    sudo cp crates/routa-cli/target/release/routa /usr/local/bin/
+
+    # Or add to PATH in your shell profile
+    export PATH="$PATH:$(pwd)/crates/routa-cli/target/release"
+    ```
+
+    Verify:
+    ```bash
+    routa --version
+    ```
+  </Tab>
+  
+  <Tab title="Web">
+    ## Web Deployment
+
+    ### Local Development
+
+    <Steps>
+      <Step title="Clone and Install">
+        ```bash
+        git clone https://github.com/yourusername/routa.git
+        cd routa
+        npm install --legacy-peer-deps
+        ```
+      </Step>
+
+      <Step title="Configure Environment">
+        Create `.env.local` in the project root:
+        
+        ```bash .env.local
+        # Database Configuration
+        ROUTA_DB_DRIVER=sqlite
+        ROUTA_DB_PATH=./data/routa.db
+        
+        # For PostgreSQL (production):
+        # ROUTA_DB_DRIVER=postgres
+        # DATABASE_URL=postgresql://user:password@localhost:5432/routa
+        
+        # AI Provider API Keys
+        ANTHROPIC_AUTH_TOKEN=sk-ant-...
+        # Or OpenAI:
+        # OPENAI_API_KEY=sk-...
+        
+        # Optional: Custom endpoints
+        # ANTHROPIC_BASE_URL=https://api.anthropic.com
+        # API_TIMEOUT_MS=600000
+        ```
+      </Step>
+
+      <Step title="Initialize Database">
+        <CodeGroup>
+        ```bash SQLite
+        npm run db:sqlite:push
+        ```
+        
+        ```bash PostgreSQL
+        # Start a local Postgres instance first
+        npm run db:push
+        ```
+        </CodeGroup>
+      </Step>
+
+      <Step title="Start Development Server">
+        ```bash
+        npm run dev
+        ```
+        
+        Open [http://localhost:3000](http://localhost:3000)
+      </Step>
+    </Steps>
+
+    ### Vercel Deployment
+
+    <Steps>
+      <Step title="Connect Repository">
+        1. Push your repository to GitHub
+        2. Import project in [Vercel Dashboard](https://vercel.com/new)
+        3. Select the repository
+      </Step>
+
+      <Step title="Configure Environment Variables">
+        In Vercel project settings, add:
+        
+        ```bash
+        ROUTA_DB_DRIVER=postgres
+        DATABASE_URL=postgresql://user:password@host/database?sslmode=require
+        ANTHROPIC_AUTH_TOKEN=your_key_here
+        ```
+        
+        <Tip>
+          Use [Neon](https://neon.tech) or Vercel Postgres for the database. Vercel automatically provisions DATABASE_URL if you add Vercel Postgres.
+        </Tip>
+      </Step>
+
+      <Step title="Deploy">
+        ```bash
+        npm run build
+        vercel --prod
+        ```
+        
+        Or push to main branch for automatic deployments.
+      </Step>
+
+      <Step title="Run Migrations">
+        After first deployment:
+        
+        ```bash
+        vercel env pull .env.production.local
+        npm run db:push:ci
+        ```
+      </Step>
+    </Steps>
+
+    ### Self-Hosted (PM2)
+
+    <Steps>
+      <Step title="Build for Production">
+        ```bash
+        npm run build
+        ```
+      </Step>
+
+      <Step title="Install PM2">
+        ```bash
+        npm install -g pm2
+        ```
+      </Step>
+
+      <Step title="Start with PM2">
+        ```bash
+        pm2 start npm --name "routa" -- start
+        pm2 save
+        pm2 startup
+        ```
+      </Step>
+
+      <Step title="Configure Reverse Proxy">
+        <CodeGroup>
+        ```nginx Nginx
+        server {
+            listen 80;
+            server_name routa.example.com;
+            
+            location / {
+                proxy_pass http://localhost:3000;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection 'upgrade';
+                proxy_set_header Host $host;
+                proxy_cache_bypass $http_upgrade;
+            }
+        }
+        ```
+        
+        ```apache Apache
+        <VirtualHost *:80>
+            ServerName routa.example.com
+            
+            ProxyPreserveHost On
+            ProxyPass / http://localhost:3000/
+            ProxyPassReverse / http://localhost:3000/
+            
+            RewriteEngine on
+            RewriteCond %{HTTP:Upgrade} websocket [NC]
+            RewriteRule /(.*) ws://localhost:3000/$1 [P,L]
+        </VirtualHost>
+        ```
+        </CodeGroup>
+      </Step>
+    </Steps>
+  </Tab>
+  
+  <Tab title="Docker">
+    ## Docker Deployment
+
+    ### SQLite (Default)
+
+    Simplest deployment with no external database required:
+
+    <Steps>
+      <Step title="Clone Repository">
+        ```bash
+        git clone https://github.com/yourusername/routa.git
+        cd routa
+        ```
+      </Step>
+
+      <Step title="Build and Start">
+        ```bash
+        docker compose up --build
+        ```
+        
+        The application will be available at [http://localhost:3000](http://localhost:3000)
+      </Step>
+
+      <Step title="Run in Background">
+        ```bash
+        docker compose up -d
+        ```
+        
+        View logs:
+        ```bash
+        docker compose logs -f app
+        ```
+      </Step>
+    </Steps>
+
+    ### PostgreSQL (Production)
+
+    For production deployments with better concurrency:
+
+    <Steps>
+      <Step title="Create Environment File">
+        Create `.env` in the project root:
+        
+        ```bash .env
+        ROUTA_DB_DRIVER=postgres
+        DATABASE_URL=postgresql://routa:routa_secret@postgres:5432/routa
+        POSTGRES_PASSWORD=routa_secret
+        
+        # AI Provider Keys
+        ANTHROPIC_AUTH_TOKEN=your_key_here
+        ```
+        
+        <Warning>
+          Change `routa_secret` to a strong password for production!
+        </Warning>
+      </Step>
+
+      <Step title="Start with Postgres Profile">
+        ```bash
+        docker compose --profile postgres up --build
+        ```
+        
+        This starts both the app and a PostgreSQL container.
+      </Step>
+
+      <Step title="Verify Health">
+        ```bash
+        curl http://localhost:3000/api/health
+        ```
+        
+        Expected response:
+        ```json
+        {
+          "status": "ok",
+          "database": "connected",
+          "version": "0.2.3"
+        }
+        ```
+      </Step>
+    </Steps>
+
+    ### External PostgreSQL
+
+    To use an external managed database (AWS RDS, Azure Database, etc.):
+
+    <Steps>
+      <Step title="Configure External Database">
+        Update `.env`:
+        
+        ```bash .env
+        ROUTA_DB_DRIVER=postgres
+        DATABASE_URL=postgresql://user:password@external-host:5432/routa?sslmode=require
+        ```
+      </Step>
+
+      <Step title="Start App Only">
+        ```bash
+        docker compose up app
+        ```
+        
+        The postgres service won't start since we're using an external database.
+      </Step>
+    </Steps>
+
+    ### Docker Compose Configuration
+
+    The `docker-compose.yml` includes:
+
+    <CodeGroup>
+    ```yaml SQLite Mode (Default)
+    services:
+      app:
+        build: .
+        ports:
+          - "3000:3000"
+        environment:
+          ROUTA_DB_DRIVER: sqlite
+          ROUTA_DB_PATH: /app/data/routa.db
+        volumes:
+          - routa_data:/app/data
+        restart: unless-stopped
+    
+    volumes:
+      routa_data:
+    ```
+    
+    ```yaml Postgres Mode
+    services:
+      app:
+        environment:
+          ROUTA_DB_DRIVER: postgres
+          DATABASE_URL: postgresql://routa:routa_secret@postgres:5432/routa
+        depends_on:
+          postgres:
+            condition: service_healthy
+      
+      postgres:
+        image: postgres:16-alpine
+        profiles:
+          - postgres
+        environment:
+          POSTGRES_DB: routa
+          POSTGRES_USER: routa
+          POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+        volumes:
+          - postgres_data:/var/lib/postgresql/data
+    
+    volumes:
+      routa_data:
+      postgres_data:
+    ```
+    </CodeGroup>
+
+    ### Backup and Restore
+
+    <Tabs>
+      <Tab title="SQLite">
+        ```bash Backup
+        docker compose cp app:/app/data/routa.db ./backup-$(date +%Y%m%d).db
+        ```
+        
+        ```bash Restore
+        docker compose cp ./backup-20260303.db app:/app/data/routa.db
+        docker compose restart app
+        ```
+      </Tab>
+      
+      <Tab title="PostgreSQL">
+        ```bash Backup
+        docker compose exec postgres pg_dump -U routa routa > backup-$(date +%Y%m%d).sql
+        ```
+        
+        ```bash Restore
+        docker compose exec -T postgres psql -U routa routa < backup-20260303.sql
+        ```
+      </Tab>
+    </Tabs>
+  </Tab>
+</Tabs>
+
+## Post-Installation Setup
+
+<Steps>
+  <Step title="Configure API Keys">
+    Add your AI provider API keys in one of these ways:
+    
+    - **Web UI**: Settings → API Configuration
+    - **Environment Variables**: Add to `.env.local` or `.env`
+    - **Desktop App**: Settings panel on first launch
+    
+    Supported providers:
+    - Anthropic (Claude)
+    - OpenAI (GPT models)
+    - Google (Gemini)
+    - Custom OpenAI-compatible APIs
+  </Step>
+  
+  <Step title="Install ACP Agents (Optional)">
+    Install agent binaries for delegation:
+    
+    <CodeGroup>
+    ```bash OpenCode
+    npm install -g opencode-ai@latest
+    # Or use npx (no install required)
+    ```
+    
+    ```bash Claude CLI
+    # Install from VS Code marketplace
+    # Or download from Anthropic
+    ```
+    
+    ```bash Codex
+    npm install -g @openai/codex@latest
+    ```
+    
+    ```bash Gemini CLI
+    npm install -g @google/generative-ai-cli@latest
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Create Your First Workspace">
+    1. Open the application
+    2. Navigate to **Workspaces**
+    3. Click **New Workspace**
+    4. Set name and directory path
+    5. Optionally configure Git repository
+  </Step>
+  
+  <Step title="Verify Installation">
+    Test the coordination system:
+    
+    <Tabs>
+      <Tab title="Web UI">
+        1. Open the Chat panel
+        2. Enter: "Create a hello.py file that prints Hello World"
+        3. Watch the agent coordination flow
+        4. Verify the file was created
+      </Tab>
+      
+      <Tab title="CLI">
+        ```bash
+        routa -p "Create a hello.py file that prints Hello World"
+        ```
+        
+        You should see agent activity and file creation.
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+## Configuration Files
+
+### Environment Variables Reference
+
+<ParamField path="ROUTA_DB_DRIVER" type="string" default="sqlite">
+  Database driver: `sqlite` or `postgres`
+</ParamField>
+
+<ParamField path="ROUTA_DB_PATH" type="string" default="./routa.db">
+  SQLite database file path (only used when ROUTA_DB_DRIVER=sqlite)
+</ParamField>
+
+<ParamField path="DATABASE_URL" type="string">
+  PostgreSQL connection string (only used when ROUTA_DB_DRIVER=postgres)
+  
+  Format: `postgresql://user:password@host:port/database?sslmode=require`
+</ParamField>
+
+<ParamField path="ANTHROPIC_AUTH_TOKEN" type="string">
+  Anthropic API key for Claude models
+</ParamField>
+
+<ParamField path="OPENAI_API_KEY" type="string">
+  OpenAI API key for GPT models
+</ParamField>
+
+<ParamField path="ANTHROPIC_BASE_URL" type="string" default="https://api.anthropic.com">
+  Custom Anthropic-compatible API endpoint
+</ParamField>
+
+<ParamField path="API_TIMEOUT_MS" type="number" default="600000">
+  API request timeout in milliseconds (10 minutes default)
+</ParamField>
+
+<ParamField path="CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" type="boolean" default="false">
+  Disable non-essential telemetry for Claude Code
+</ParamField>
+
+<ParamField path="GITHUB_TOKEN" type="string">
+  GitHub personal access token for webhook and virtual workspace features
+</ParamField>
+
+<ParamField path="GITHUB_POLLING_ENABLED" type="boolean" default="false">
+  Enable GitHub issue polling adapter (alternative to webhooks)
+</ParamField>
+
+<ParamField path="GITHUB_POLLING_INTERVAL" type="number" default="30">
+  Polling interval in seconds (minimum: 10)
+</ParamField>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Rust build fails" icon="triangle-exclamation">
+    **Symptoms**: Errors during `npm run tauri dev` or `cargo build`
+    
+    **Solutions**:
+    - Update Rust: `rustup update`
+    - Clear build cache: `cargo clean`
+    - On Linux, install missing dependencies (see platform-specific section)
+    - On Windows, ensure Visual Studio Build Tools are installed
+    - Check disk space (needs ~2GB for debug builds)
+  </Accordion>
+  
+  <Accordion title="Database connection errors" icon="database">
+    **Symptoms**: `Connection refused` or `Database locked` errors
+    
+    **Solutions**:
+    - For SQLite: Check file permissions and ensure directory exists
+    - For PostgreSQL: Verify DATABASE_URL is correct and database is running
+    - Test connection: `psql $DATABASE_URL`
+    - Run migrations: `npm run db:push`
+    - For "database locked": Close other connections or use PostgreSQL
+  </Accordion>
+  
+  <Accordion title="Node dependencies fail to install" icon="npm">
+    **Symptoms**: Peer dependency conflicts or build failures
+    
+    **Solutions**:
+    - Use the `--legacy-peer-deps` flag with npm
+    - Try pnpm: `pnpm install --shamefully-hoist`
+    - Clear cache: `npm cache clean --force`
+    - Delete node_modules and reinstall
+    - Ensure Node.js version is 22.x or later
+  </Accordion>
+  
+  <Accordion title="Docker build fails" icon="docker">
+    **Symptoms**: Build errors or container won't start
+    
+    **Solutions**:
+    - Ensure Docker daemon is running
+    - Update Docker to latest version
+    - Clear build cache: `docker builder prune`
+    - Check available disk space
+    - On Windows/Mac, increase Docker memory allocation (Settings → Resources)
+    - Review logs: `docker compose logs app`
+  </Accordion>
+  
+  <Accordion title="ACP agent spawn fails" icon="robot">
+    **Symptoms**: Cannot delegate to OpenCode, Claude, or other agents
+    
+    **Solutions**:
+    - Verify agent binary is installed and in PATH
+    - Test manually: `opencode --version` or `claude --version`
+    - Check Settings → ACP Providers for correct configuration
+    - For npx-based agents: Ensure internet connection
+    - Review agent logs in the UI or database
+  </Accordion>
+  
+  <Accordion title="Port 3000 already in use" icon="network-wired">
+    **Symptoms**: `EADDRINUSE: address already in use :::3000`
+    
+    **Solutions**:
+    - Change port: `PORT=3001 npm run dev`
+    - Find and kill process: `lsof -ti:3000 | xargs kill` (Linux/Mac)
+    - Or: `npx kill-port 3000`
+    - For Docker: Change port mapping in docker-compose.yml
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Run your first multi-agent coordination in 5 minutes
+  </Card>
+  
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Configure workspaces, MCP servers, and custom specialists
+  </Card>
+  
+  <Card title="Core Concepts" icon="lightbulb" href="/core-concepts">
+    Learn about specs, tasks, and coordination patterns
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api-reference">
+    Explore the REST and protocol APIs
+  </Card>
+</CardGroup>
+
+## Upgrading
+
+To upgrade to a newer version:
+
+<Tabs>
+  <Tab title="Desktop">
+    ```bash
+    git pull origin main
+    npm install --legacy-peer-deps
+    npm run tauri build
+    ```
+    
+    Install the new build from the `target/release/bundle/` directory.
+  </Tab>
+  
+  <Tab title="Web">
+    ```bash
+    git pull origin main
+    npm install --legacy-peer-deps
+    npm run db:push  # Run migrations
+    npm run build
+    ```
+    
+    Then restart your deployment.
+  </Tab>
+  
+  <Tab title="Docker">
+    ```bash
+    git pull origin main
+    docker compose down
+    docker compose up --build -d
+    ```
+  </Tab>
+</Tabs>
+
+<Warning>
+  Always backup your database before upgrading!
+</Warning>

@@ -1,0 +1,396 @@
+---
+title: "ACP Registry"
+description: "Discovering and using agents from the ACP Registry"
+icon: "book-bookmark"
+---
+
+## Overview
+
+The **ACP Registry** is a centralized CDN-hosted catalog of ACP-compliant agents. Routa automatically fetches agent definitions from the registry to discover available agents and their distribution methods.
+
+## Registry URL
+
+```
+https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json
+```
+
+The registry is cached for 1 hour to reduce network requests.
+
+## Registry Format
+
+The registry follows the [ACP Registry Format](https://github.com/agentclientprotocol/registry/blob/main/FORMAT.md):
+
+```typescript
+interface AcpRegistry {
+  version: string;           // Registry format version
+  agents: RegistryAgent[];   // List of available agents
+  extensions?: unknown[];    // Future extension point
+}
+
+interface RegistryAgent {
+  id: string;                // Unique agent identifier
+  name: string;              // Display name
+  version: string;           // Agent version
+  description: string;       // Short description
+  repository?: string;       // Source code URL
+  authors: string[];         // List of authors
+  license: string;           // License (SPDX identifier)
+  icon?: string;             // Icon URL
+  distribution: AgentDistribution;
+}
+```
+
+## Distribution Types
+
+Agents can be distributed in three ways:
+
+### NPX Distribution
+
+Node.js packages distributed via npm:
+
+```typescript
+interface NpxDistribution {
+  package: string;           // NPM package name
+  args?: string[];           // Additional CLI arguments
+  env?: Record<string, string>; // Environment variables
+}
+```
+
+Example:
+
+```json
+{
+  "npx": {
+    "package": "@acme/ai-agent",
+    "args": ["--acp"],
+    "env": {
+      "AGENT_MODE": "production"
+    }
+  }
+}
+```
+
+### UVX Distribution
+
+Python packages distributed via PyPI:
+
+```typescript
+interface UvxDistribution {
+  package: string;           // PyPI package name
+  args?: string[];           // Additional CLI arguments
+  env?: Record<string, string>; // Environment variables
+}
+```
+
+Example:
+
+```json
+{
+  "uvx": {
+    "package": "ai-agent",
+    "args": ["acp"]
+  }
+}
+```
+
+### Binary Distribution
+
+Platform-specific binary archives:
+
+```typescript
+interface BinaryDistribution {
+  "darwin-aarch64"?: BinaryPlatformConfig;
+  "darwin-x86_64"?: BinaryPlatformConfig;
+  "linux-aarch64"?: BinaryPlatformConfig;
+  "linux-x86_64"?: BinaryPlatformConfig;
+  "windows-aarch64"?: BinaryPlatformConfig;
+  "windows-x86_64"?: BinaryPlatformConfig;
+}
+
+interface BinaryPlatformConfig {
+  archive: string;           // Download URL
+  cmd: string;               // Executable path in archive
+  args?: string[];           // CLI arguments
+  env?: Record<string, string>; // Environment variables
+}
+```
+
+Example:
+
+```json
+{
+  "binary": {
+    "darwin-aarch64": {
+      "archive": "https://example.com/agent-v1.0.0-macos-arm64.tar.gz",
+      "cmd": "./agent",
+      "args": ["--acp"]
+    }
+  }
+}
+```
+
+## API Reference
+
+### Fetching the Registry
+
+```typescript
+import { fetchRegistry } from "@/core/acp";
+
+const registry = await fetchRegistry();
+console.log("Registry version:", registry.version);
+console.log("Available agents:", registry.agents.length);
+```
+
+#### Force Refresh
+
+```typescript
+const registry = await fetchRegistry(true);
+// Bypasses cache and fetches fresh data
+```
+
+### Getting an Agent
+
+```typescript
+import { getRegistryAgent } from "@/core/acp";
+
+const agent = await getRegistryAgent("opencode");
+if (agent) {
+  console.log("Name:", agent.name);
+  console.log("Version:", agent.version);
+  console.log("Description:", agent.description);
+  console.log("Repository:", agent.repository);
+}
+```
+
+### Listing All Agents
+
+```typescript
+import { getAllRegistryAgents } from "@/core/acp";
+
+const agents = await getAllRegistryAgents();
+for (const agent of agents) {
+  console.log(`${agent.name} (${agent.id}) - ${agent.description}`);
+}
+```
+
+### Filtering by Distribution Type
+
+```typescript
+import { getAgentsByDistributionType } from "@/core/acp";
+
+// Get all NPX-distributed agents
+const npxAgents = await getAgentsByDistributionType("npx");
+console.log("NPX agents:", npxAgents.map(a => a.name));
+
+// Get all binary-distributed agents
+const binaryAgents = await getAgentsByDistributionType("binary");
+console.log("Binary agents:", binaryAgents.map(a => a.name));
+```
+
+### Platform Detection
+
+```typescript
+import { detectPlatformTarget } from "@/core/acp";
+
+const platform = detectPlatformTarget();
+console.log("Current platform:", platform);
+// "darwin-aarch64", "linux-x86_64", etc.
+```
+
+### Clearing the Cache
+
+```typescript
+import { clearRegistryCache } from "@/core/acp";
+
+clearRegistryCache();
+// Next fetchRegistry() call will fetch fresh data
+```
+
+## Integration with Presets
+
+Registry agents are automatically converted to ACP presets:
+
+```typescript
+import { 
+  fetchRegistryPresets,
+  getAllAvailablePresets 
+} from "@/core/acp";
+
+// Get registry-based presets
+const registryPresets = await fetchRegistryPresets();
+
+// Get both static and registry presets
+const allPresets = await getAllAvailablePresets();
+```
+
+Each registry agent becomes an `AcpAgentPreset` with `source: "registry"`:
+
+```typescript
+interface AcpAgentPreset {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  description: string;
+  source: "static" | "registry";
+  distributionType?: "npx" | "uvx" | "binary";
+  version?: string;
+  icon?: string;
+  // ...
+}
+```
+
+## Example: Using a Registry Agent
+
+```typescript
+import { 
+  getRegistryAgent,
+  buildAgentCommand,
+  installFromRegistry 
+} from "@/core/acp";
+
+// 1. Check if agent exists in registry
+const agent = await getRegistryAgent("example-agent");
+if (!agent) {
+  console.error("Agent not found in registry");
+  return;
+}
+
+// 2. Check if already installed
+let command = await buildAgentCommand("example-agent");
+
+if (!command) {
+  // 3. Install the agent
+  console.log("Installing agent...");
+  const result = await installFromRegistry("example-agent");
+  
+  if (!result.success) {
+    console.error("Installation failed:", result.error);
+    return;
+  }
+  
+  // 4. Get command after installation
+  command = await buildAgentCommand("example-agent");
+}
+
+// 5. Use the agent
+console.log("Running:", command.command, command.args.join(" "));
+```
+
+## Provider Configurations
+
+Routa includes built-in presets for popular providers that may or may not be in the registry:
+
+### OpenCode
+
+```typescript
+{
+  id: "opencode",
+  name: "OpenCode",
+  command: "opencode",
+  args: ["acp"],
+  description: "OpenCode AI coding agent",
+  envBinOverride: "OPENCODE_BIN"
+}
+```
+
+### Claude Code
+
+```typescript
+{
+  id: "claude",
+  name: "Claude Code",
+  command: "claude",
+  args: [],
+  description: "Anthropic Claude Code (native ACP support)",
+  nonStandardApi: true  // Uses custom stream-json protocol
+}
+```
+
+### Gemini
+
+```typescript
+{
+  id: "gemini",
+  name: "Gemini",
+  command: "gemini",
+  args: ["--experimental-acp"],
+  description: "Google Gemini CLI",
+  envBinOverride: "GEMINI_BIN"
+}
+```
+
+### GitHub Copilot
+
+```typescript
+{
+  id: "copilot",
+  name: "GitHub Copilot",
+  command: "copilot",
+  args: ["--acp", "--allow-all-tools", "--no-ask-user"],
+  description: "GitHub Copilot CLI",
+  envBinOverride: "COPILOT_BIN"
+}
+```
+
+### Codex
+
+```typescript
+{
+  id: "codex",
+  name: "Codex",
+  command: "codex-acp",
+  args: [],
+  description: "OpenAI Codex CLI (via codex-acp wrapper)",
+  envBinOverride: "CODEX_ACP_BIN"
+}
+```
+
+## Registry Sync
+
+Sync local presets with the registry:
+
+```typescript
+import { syncPresetsWithRegistry } from "@/core/acp";
+
+const synced = await syncPresetsWithRegistry();
+console.log("Synced presets:", synced.map(p => p.id));
+```
+
+This function:
+1. Fetches the latest registry
+2. Converts registry agents to presets
+3. Returns merged list (static + registry)
+
+## Error Handling
+
+### Network Failures
+
+```typescript
+try {
+  const registry = await fetchRegistry();
+} catch (error) {
+  console.error("Failed to fetch registry:", error.message);
+  // Falls back to cached data if available
+}
+```
+
+### Invalid Format
+
+```typescript
+// Throws: "Invalid ACP registry format: missing version or agents array"
+```
+
+## Best Practices
+
+1. **Cache registry data** - Don't call `fetchRegistry()` on every request
+2. **Handle network failures gracefully** - Registry may be unavailable
+3. **Prefer registry agents over static presets** - They're always up-to-date
+4. **Check multiple distribution types** - Agents may support npx, uvx, and binary
+5. **Validate agent availability** - Use `buildAgentCommand()` before spawning
+
+## Related
+
+- [Installing ACP Agents](/api/acp/install)
+- [ACP Overview](/api/acp/overview)
+- [Runtime Management](/api/acp/runtime)

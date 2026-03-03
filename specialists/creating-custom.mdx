@@ -1,0 +1,705 @@
+---
+title: Creating Custom Specialists
+description: Guide to building your own specialist agents
+icon: wand-magic-sparkles
+---
+
+## Overview
+
+You can create custom specialists to extend Routa's capabilities. Custom specialists can:
+
+- Define specialized behaviors for specific domains (e.g., database migrations, documentation writing, code review)
+- Override default specialists with your own versions
+- Use custom system prompts tailored to your team's workflows
+- Specify different model tiers for cost/performance optimization
+
+## File Format
+
+Specialists are defined in Markdown files with YAML frontmatter:
+
+```markdown
+---
+name: "Your Specialist Name"
+description: "Brief description of what this specialist does"
+modelTier: "smart"  # or "fast", "balanced"
+role: "CRAFTER"     # or "ROUTA", "GATE", "DEVELOPER"
+roleReminder: "Key constraints or reminders for this specialist"
+---
+
+# System Prompt
+
+Detailed instructions for how this specialist should behave...
+
+## Rules
+1. First rule
+2. Second rule
+...
+```
+
+The filename (without `.md` extension) becomes the specialist's ID.
+
+### Example: Database Migration Specialist
+
+**File:** `~/.routa/specialists/db-migration.md`
+
+```markdown
+---
+name: "Database Migration Specialist"
+description: "Creates and manages database migrations with safety checks"
+modelTier: "smart"
+role: "CRAFTER"
+roleReminder: "Always create rollback migrations. Test migrations before committing."
+---
+
+# Database Migration Specialist
+
+You create database migrations with a focus on safety and reversibility.
+
+## Hard Rules
+1. **Always create up AND down migrations** - Every schema change must be reversible
+2. **Test before committing** - Run migration up, verify, then down, then up again
+3. **Document breaking changes** - If migration breaks existing code, document it clearly
+4. **Use transactions** - Wrap DDL in transactions when the database supports it
+5. **Validate data** - Check for data issues before running destructive operations
+
+## Workflow
+1. Analyze the schema change requirement
+2. Create migration file with timestamp: `YYYYMMDD_HHMMSS_description.sql`
+3. Write UP migration with schema changes
+4. Write DOWN migration to reverse changes
+5. Test locally:
+   - Run up migration
+   - Verify schema with `\d` commands
+   - Run down migration
+   - Verify rollback successful
+   - Run up migration again
+6. Update migration docs if needed
+7. Commit with message: "migration: <description>"
+
+## Safety Checks
+Before finalizing:
+- [ ] Does this break existing queries? Document it.
+- [ ] Are there NULL constraints on columns with existing data? Need backfill.
+- [ ] Are there unique constraints? Check for duplicates first.
+- [ ] Does this drop columns/tables? Ensure no code references them.
+- [ ] Is this migration reversible? Test the down migration.
+
+## Completion
+Call `report_to_parent` with:
+- Migration file path
+- Summary of schema changes
+- Breaking changes (if any)
+- Verification steps run
+```
+
+This specialist would be invoked as `specialist="db-migration"` when delegating tasks.
+
+## File Locations
+
+Specialists can be placed in two locations:
+
+### 1. User Specialists (Priority 2)
+**Location:** `~/.routa/specialists/`
+
+For personal custom specialists. These override bundled specialists with the same ID.
+
+```bash
+mkdir -p ~/.routa/specialists
+cd ~/.routa/specialists
+vim my-specialist.md
+```
+
+### 2. Bundled Specialists (Priority 3)
+**Location:** `<project-root>/resources/specialists/`
+
+For team-shared specialists committed to the repository.
+
+```bash
+cd /path/to/routa-project
+mkdir -p resources/specialists
+cd resources/specialists
+vim my-specialist.md
+```
+
+<Note>
+User specialists (`~/.routa/specialists/`) have higher priority than bundled specialists (`resources/specialists/`). This lets you override team specialists with your own versions.
+</Note>
+
+See `src/core/specialists/specialist-file-loader.ts:159` for directory resolution.
+
+## Frontmatter Fields
+
+### Required Fields
+
+#### `name` (string)
+Display name shown in UIs and logs.
+
+```yaml
+name: "Database Migration Specialist"
+```
+
+#### `description` (string)
+Brief description of the specialist's purpose.
+
+```yaml
+description: "Creates and manages database migrations with safety checks"
+```
+
+### Optional Fields
+
+#### `role` (string)
+Agent role: `ROUTA`, `CRAFTER`, `GATE`, or `DEVELOPER`.
+
+If not specified, Routa infers from the specialist ID:
+
+| ID pattern | Inferred role |
+|------------|---------------|
+| `routa`, `coordinator`, `spec-writer` | `ROUTA` |
+| `crafter`, `implementor` | `CRAFTER` |
+| `gate`, `verifier` | `GATE` |
+| `developer` | `DEVELOPER` |
+| Other IDs | `CRAFTER` (default) |
+
+```yaml
+role: "CRAFTER"
+```
+
+See `src/core/specialists/specialist-file-loader.ts:193` for role inference logic.
+
+#### `modelTier` (string)
+Model tier: `fast`, `balanced`, or `smart`.
+
+Defaults to `smart` if not specified.
+
+```yaml
+modelTier: "fast"  # For efficiency
+```
+
+**Choosing a tier:**
+- `fast` - Quick implementations, straightforward tasks (like Crafter)
+- `balanced` - Medium complexity
+- `smart` - Complex reasoning, planning, verification (like Routa, Gate, Developer)
+
+See `src/core/specialists/specialist-file-loader.ts:52` for tier resolution.
+
+#### `roleReminder` (string)
+Short reminder of key constraints, shown at the end of delegation prompts.
+
+```yaml
+roleReminder: "Always create rollback migrations. Test migrations before committing."
+```
+
+#### `model` (string)
+Specific model override (e.g., `claude-3-5-haiku-20241022`).
+
+Takes precedence over tier-based model selection.
+
+```yaml
+model: "claude-3-5-haiku-20241022"
+```
+
+## System Prompt Guidelines
+
+The Markdown content after frontmatter becomes the specialist's system prompt. Write it as instructions to the agent.
+
+### Structure
+
+1. **Introduction** - What this specialist does
+2. **Hard Rules** - Non-negotiable constraints
+3. **Workflow** - Step-by-step process
+4. **Completion** - How to signal completion
+
+### Best Practices
+
+#### Be Specific
+
+<Warning>
+**Bad:** "Write good code"
+
+**Good:** "Follow existing patterns in the codebase. Match indentation style. Use TypeScript strict mode."
+</Warning>
+
+#### Use Imperative Language
+
+```markdown
+## Hard Rules
+1. **Never skip tests** - Run the full test suite before committing
+2. **Document breaking changes** - Add entries to CHANGELOG.md
+3. **Validate inputs** - Check parameters before processing
+```
+
+#### Include Examples
+
+```markdown
+## Commit Message Format
+
+Use conventional commits:
+- `feat: add user authentication`
+- `fix: resolve session timeout bug`
+- `docs: update API reference`
+- `refactor: simplify error handling`
+```
+
+#### Define Completion Criteria
+
+```markdown
+## Completion
+
+Call `report_to_parent` with:
+- summary: What you implemented and verification results
+- success: true/false
+- filesModified: List of changed files
+- taskId: Your assigned task ID
+
+Example:
+report_to_parent({
+  summary: "Created migration for user roles. Tested up/down migrations successfully.",
+  success: true,
+  filesModified: ["migrations/20240303_add_user_roles.sql"],
+  taskId: "task-123"
+})
+```
+
+### Constraining Behavior
+
+Use specific constraints to prevent common mistakes:
+
+```markdown
+## What NOT to Do
+
+- ❌ Don't refactor unrelated code
+- ❌ Don't add features not in the task scope
+- ❌ Don't skip error handling
+- ❌ Don't commit without running tests
+- ❌ Don't create markdown files for collaboration (use notes)
+```
+
+## Example Custom Specialists
+
+### Documentation Writer
+
+**File:** `~/.routa/specialists/doc-writer.md`
+
+```markdown
+---
+name: "Documentation Writer"
+description: "Writes and updates technical documentation"
+modelTier: "smart"
+role: "CRAFTER"
+roleReminder: "Follow the project's documentation style guide. Include code examples."
+---
+
+# Documentation Writer
+
+You write clear, accurate technical documentation.
+
+## Hard Rules
+1. **Read the code first** - Understand the feature before documenting
+2. **Include examples** - Every API should have usage examples
+3. **Test examples** - Code examples must be valid and tested
+4. **Follow style guide** - Match existing documentation format
+5. **Link references** - Cross-reference related docs
+
+## Workflow
+1. Read the feature code and tests
+2. Identify the user-facing API or behavior
+3. Draft documentation with:
+   - Overview - What it does
+   - Usage - How to use it (with examples)
+   - Parameters - What inputs it accepts
+   - Returns - What outputs it produces
+   - Examples - Real code examples
+4. Test all code examples
+5. Add to appropriate docs file
+6. Update navigation/TOC if needed
+
+## Documentation Format
+
+Use this structure:
+
+```markdown
+## Feature Name
+
+Brief description (1-2 sentences).
+
+### Usage
+
+```language
+// Code example
+```
+
+### Parameters
+
+| Name | Type | Description |
+|------|------|-------------|
+| param1 | string | Description |
+
+### Returns
+
+Description of return value.
+
+### Example
+
+Real-world example with context.
+```
+
+## Completion
+
+Call `report_to_parent` with:
+- Documentation file(s) updated
+- Features documented
+- Number of examples added
+```
+
+### API Reviewer
+
+**File:** `~/.routa/specialists/api-reviewer.md`
+
+```markdown
+---
+name: "API Reviewer"
+description: "Reviews API designs for consistency and best practices"
+modelTier: "smart"
+role: "GATE"
+roleReminder: "Check REST conventions, error handling, and backward compatibility."
+---
+
+# API Reviewer
+
+You review API designs and implementations for quality and consistency.
+
+## Hard Rules
+1. **REST conventions** - Verify HTTP methods, status codes, resource naming
+2. **Error handling** - All endpoints must return consistent error shapes
+3. **Backward compatibility** - Flag breaking changes
+4. **Documentation** - APIs must be documented with examples
+5. **Security** - Check authentication, authorization, input validation
+
+## Review Checklist
+
+### REST Conventions
+- [ ] HTTP methods used correctly (GET for reads, POST for creates, etc.)
+- [ ] Status codes appropriate (200, 201, 400, 404, 500, etc.)
+- [ ] Resource names are nouns, not verbs
+- [ ] Consistent URL structure (/api/v1/resources/:id)
+
+### Request/Response
+- [ ] Request validation exists
+- [ ] Error responses have consistent shape
+- [ ] Success responses documented
+- [ ] Content-Type headers correct
+
+### Security
+- [ ] Authentication required where needed
+- [ ] Authorization checks present
+- [ ] Input sanitization implemented
+- [ ] Rate limiting considered
+
+### Documentation
+- [ ] API endpoint documented
+- [ ] Request/response examples provided
+- [ ] Error cases documented
+- [ ] Parameters described
+
+### Compatibility
+- [ ] No breaking changes to existing endpoints
+- [ ] New fields are optional
+- [ ] Deprecated fields still work
+
+## Output Format
+
+```
+## API Review: [Endpoint]
+
+### ✅ Meets Standards
+- List what's correct
+
+### ⚠️ Recommendations
+- Suggested improvements (non-blocking)
+
+### ❌ Required Changes
+- Issues that must be fixed
+
+### Security Notes
+- Any security considerations
+```
+
+## Completion
+
+Call `report_to_parent` with:
+- summary: Review verdict and key issues
+- success: true only if no required changes
+- taskId: Review task ID
+```
+
+### Test Generator
+
+**File:** `~/.routa/specialists/test-generator.md`
+
+```markdown
+---
+name: "Test Generator"
+description: "Generates comprehensive test cases for code"
+modelTier: "smart"
+role: "CRAFTER"
+roleReminder: "Cover happy paths, edge cases, and error scenarios. Aim for high coverage."
+---
+
+# Test Generator
+
+You generate thorough test cases for code.
+
+## Hard Rules
+1. **Read the implementation** - Understand the code before writing tests
+2. **Cover all paths** - Happy path, edge cases, errors
+3. **Follow test conventions** - Match project's testing style
+4. **Make tests independent** - No test should depend on another
+5. **Run and verify** - All tests must pass before completion
+
+## Test Coverage Goals
+
+### For Functions
+- Happy path with valid inputs
+- Edge cases (empty, null, boundary values)
+- Error cases (invalid inputs, exceptions)
+- Type validation (if applicable)
+
+### For APIs
+- Success response
+- Validation errors (400)
+- Authentication errors (401)
+- Authorization errors (403)
+- Not found errors (404)
+- Server errors (500)
+
+### For UI Components
+- Renders correctly
+- User interactions work
+- Props are handled
+- Error states display
+- Loading states display
+
+## Test Structure
+
+Use this pattern:
+
+```typescript
+describe('Feature Name', () => {
+  describe('when happy path', () => {
+    it('should do expected thing', () => {
+      // Arrange
+      const input = ...;
+      
+      // Act
+      const result = functionUnderTest(input);
+      
+      // Assert
+      expect(result).toBe(expected);
+    });
+  });
+  
+  describe('when edge case', () => {
+    it('should handle edge case', () => {
+      // ...
+    });
+  });
+  
+  describe('when error occurs', () => {
+    it('should handle error appropriately', () => {
+      // ...
+    });
+  });
+});
+```
+
+## Workflow
+1. Read the code to be tested
+2. Identify all code paths
+3. List test cases needed
+4. Write tests following project conventions
+5. Run tests: `npm test`
+6. Verify all pass
+7. Check coverage: `npm run test:coverage`
+
+## Completion
+
+Call `report_to_parent` with:
+- Number of test cases added
+- Coverage percentage (if available)
+- Test files created/modified
+- Verification that all tests pass
+```
+
+## Loading Custom Specialists
+
+Custom specialists are automatically loaded from:
+
+1. `~/.routa/specialists/` (user specialists)
+2. `<project>/resources/specialists/` (bundled specialists)
+
+No configuration required. Just create the `.md` file and it's available.
+
+### Verifying Load
+
+Check that your specialist loaded:
+
+```typescript
+import { loadSpecialists, getSpecialistById } from '@/core/orchestration/specialist-prompts';
+
+const specialists = await loadSpecialists();
+const mySpecialist = getSpecialistById('db-migration');
+
+if (mySpecialist) {
+  console.log('Loaded:', mySpecialist.name);
+  console.log('Role:', mySpecialist.role);
+  console.log('Tier:', mySpecialist.defaultModelTier);
+} else {
+  console.log('Specialist not found');
+}
+```
+
+### Cache Invalidation
+
+After modifying a specialist file, reload:
+
+```typescript
+import { reloadSpecialists } from '@/core/orchestration/specialist-prompts';
+
+await reloadSpecialists();
+```
+
+See `src/core/orchestration/specialist-prompts.ts:412` for reload functionality.
+
+## Using Custom Specialists
+
+### From Routa Coordinator
+
+Delegate to your custom specialist:
+
+```typescript
+delegate_task_to_agent(
+  taskId: "task-123",
+  specialist: "db-migration",  // Your custom specialist ID
+  waitMode: "after_all"
+)
+```
+
+### From Code
+
+```typescript
+import { getSpecialistById, buildDelegationPrompt } from '@/core/orchestration/specialist-prompts';
+
+const specialist = getSpecialistById('db-migration');
+
+const prompt = buildDelegationPrompt({
+  specialist,
+  agentId: 'agent-456',
+  taskId: 'task-123',
+  taskTitle: 'Add user roles table',
+  taskContent: 'Create migration for user_roles table...',
+  parentAgentId: 'agent-123'
+});
+
+// Use prompt to spawn agent
+```
+
+See `src/core/orchestration/specialist-prompts.ts:459` for delegation prompt building.
+
+## Best Practices
+
+### 1. Start with Existing Specialists
+
+Read the bundled specialists for inspiration:
+- `resources/specialists/routa.md`
+- `resources/specialists/crafter.md`
+- `resources/specialists/gate.md`
+- `resources/specialists/developer.md`
+
+### 2. Be Prescriptive
+
+Specialists work best with specific, actionable instructions.
+
+### 3. Test Your Specialist
+
+Create a simple task and verify the specialist behaves as expected.
+
+### 4. Iterate
+
+Refine the system prompt based on observed behavior.
+
+### 5. Document Edge Cases
+
+Include instructions for unusual scenarios.
+
+## Common Mistakes
+
+<Warning>
+Avoid these when creating specialists:
+
+- **Vague instructions** - "Do good work" doesn't help. Be specific.
+- **Missing role reminder** - The roleReminder keeps the agent focused
+- **Wrong model tier** - Planning/reasoning tasks need `smart`, not `fast`
+- **No completion criteria** - Agent needs to know when it's done
+- **Overly broad scope** - Specialists work best when focused
+</Warning>
+
+## Overriding Default Specialists
+
+To override a bundled specialist, create a file with the same ID:
+
+**Example:** Override the default Crafter
+
+**File:** `~/.routa/specialists/crafter.md`
+
+```markdown
+---
+name: "My Custom Implementor"
+description: "Custom implementation specialist for my team"
+modelTier: "smart"
+role: "CRAFTER"
+roleReminder: "Follow our team's coding standards. Always add logging."
+---
+
+# My Custom Implementor
+
+...(custom instructions)...
+```
+
+Your version will be loaded instead of the bundled `crafter.md`.
+
+See `src/core/specialists/specialist-db-loader.ts:39` for loading priority.
+
+## File Validation
+
+### Required Frontmatter
+
+The `name` field is required. Files without it are skipped:
+
+```
+[SpecialistLoader] Skipping /path/to/file.md: missing 'name' in frontmatter
+```
+
+See `src/core/specialists/specialist-file-loader.ts:97` for validation.
+
+### Invalid Model Tier
+
+Invalid `modelTier` values default to `smart`:
+
+```
+[SpecialistLoader] Invalid modelTier "super-fast" in /path/to/file.md, defaulting to "smart"
+```
+
+Valid values: `fast`, `balanced`, `smart`
+
+See `src/core/specialists/specialist-file-loader.ts:105` for tier validation.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Specialist Overview" icon="book" href="/specialists/overview">
+    Learn more about the specialist system
+  </Card>
+  <Card title="Routa Coordinator" icon="diagram-project" href="/specialists/routa-coordinator">
+    See how Routa delegates to specialists
+  </Card>
+</CardGroup>

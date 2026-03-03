@@ -1,0 +1,548 @@
+---
+title: 'Agent Client Protocol (ACP)'
+description: 'Spawn and manage agent processes (Claude Code, OpenCode, Codex, Gemini)'
+---
+
+## Overview
+
+The **Agent Client Protocol (ACP)** is Routa's process management layer. It spawns, monitors, and communicates with AI agent processes across multiple platforms (Claude Code, OpenCode, Codex, Gemini, etc.).
+
+**Key Purpose:** Abstract away platform-specific agent implementations and provide a unified interface for spawning and managing agent lifecycle.
+
+**Built on:** [@agentclientprotocol/sdk](https://github.com/agentclientprotocol/sdk)
+
+## When to Use ACP
+
+Use ACP when you need to:
+- **Spawn new agent processes** dynamically during workflow execution
+- **Route prompts** to specific agent providers (Claude, OpenCode, Copilot)
+- **Manage agent lifecycle** (start, stop, monitor health)
+- **Configure MCP servers** for each agent instance
+- **Track agent usage** (tokens, tool calls, file changes)
+
+ACP is ideal for **orchestrators** that need to dynamically spawn specialist agents.
+
+## Architecture
+
+ACP implementation lives in `src/core/acp/routa-acp-agent.ts:62`:
+
+```typescript
+export function createRoutaAcpAgent(
+  system: RoutaSystem,
+  skillRegistry?: SkillRegistry
+) {
+  const sessions = new Map<string, AcpSession>();
+
+  return function agentHandler(connection: AgentSideConnection): Agent {
+    return {
+      async initialize(params: InitializeRequest): Promise<InitializeResponse> {
+        return {
+          protocolVersion: params.protocolVersion,
+          agentCapabilities: { loadSession: true },
+          agentInfo: { name: "routa-acp", version: "0.1.0" }
+        };
+      },
+
+      async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
+        const sessionId = uuidv4();
+        const routaAgentId = await createBackingAgent();
+        sessions.set(sessionId, { id: sessionId, routaAgentId, workspaceId, cwd });
+        return { sessionId };
+      },
+
+      async prompt(params: PromptRequest): Promise<PromptResponse> {
+        // Route prompts to Routa tools, spawn agents, stream updates
+      }
+    };
+  };
+}
+```
+
+## Key Concepts
+
+### ACP Sessions
+
+Each ACP session represents a persistent conversation with an agent:
+
+```typescript
+interface AcpSession {
+  id: string;              // Unique session identifier
+  cwd: string;             // Working directory
+  routaAgentId?: string;   // Linked Routa agent record
+  workspaceId: string;     // Workspace context
+}
+```
+
+Sessions are created via `newSession` and tracked in `src/core/acp/http-session-store.ts:58`.
+
+### Provider Registry
+
+Supported agent providers are registered in `src/core/acp/provider-registry.ts:177`:
+
+<AccordionGroup>
+  <Accordion title="Claude Code" icon="anthropic">
+    **Provider ID:** `claude`
+    
+    **Process:** `claude-code-process` (npm package)
+    
+    **Transport:** SSE + JSON-RPC
+    
+    ```typescript
+    // src/core/acp/claude-code-process.ts
+    const config = buildClaudeCodeConfig({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      model: "claude-sonnet-4-20250514",
+      mcpServers: {
+        routa: {
+          transport: { type: "sse", url: "http://localhost:3000/api/mcp" }
+        }
+      }
+    });
+    
+    const process = new ClaudeCodeProcess(config);
+    await process.start();
+    ```
+  </Accordion>
+
+  <Accordion title="OpenCode" icon="code">
+    **Provider ID:** `opencode`
+    
+    **Process:** `opencode` (npx/binary)
+    
+    **Transport:** stdio + JSON-RPC
+    
+    ```typescript
+    // src/core/acp/opencode-process.ts
+    const process = new AcpProcess({
+      command: "npx",
+      args: ["opencode", "--stdio"],
+      env: {
+        ...process.env,
+        OPENCODE_MCP_CONFIG: JSON.stringify({ servers: mcpConfig })
+      }
+    });
+    
+    await process.start();
+    ```
+  </Accordion>
+
+  <Accordion title="Codex" icon="terminal">
+    **Provider ID:** `codex`
+    
+    **Process:** `codex` (binary)
+    
+    **Transport:** stdio + JSON-RPC
+    
+    Similar to OpenCode but uses Codex binary.
+  </Accordion>
+
+  <Accordion title="Gemini" icon="google">
+    **Provider ID:** `gemini`
+    
+    **Process:** `gemini-cli` (npm package)
+    
+    **Transport:** stdio + JSON-RPC
+    
+    ```bash
+    npx @google/genai-cli --stdio
+    ```
+  </Accordion>
+
+  <Accordion title="GitHub Copilot" icon="github">
+    **Provider ID:** `copilot`
+    
+    **Process:** `gh copilot` (GitHub CLI extension)
+    
+    **Transport:** stdio + JSON-RPC
+    
+    ```bash
+    gh copilot --stdio
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Agent Event Bridge
+
+ACP sessions emit structured events for real-time monitoring (`src/core/acp/agent-event-bridge/agent-event-bridge.ts:61`):
+
+```typescript
+interface WorkspaceAgentEvent {
+  agentId: string;
+  workspaceId: string;
+  sessionId: string;
+  timestamp: string;
+}
+
+// Event types
+type AgentStartedEvent = WorkspaceAgentEvent & {
+  type: "agent-started";
+  name: string;
+  role: AgentRole;
+};
+
+type ToolCallBlockEvent = WorkspaceAgentEvent & {
+  type: "tool-call-block";
+  toolName: string;
+  status: BlockStatus;
+  kind: ToolKind; // "file" | "terminal" | "mcp" | "other"
+};
+
+type FileChangesBlockEvent = WorkspaceAgentEvent & {
+  type: "file-changes-block";
+  changes: FileChange[];
+};
+
+type AgentCompletedEvent = WorkspaceAgentEvent & {
+  type: "agent-completed";
+  success: boolean;
+  summary?: string;
+};
+```
+
+## Configuration
+
+### Process Configuration
+
+<ParamField path="command" type="string" required>
+  Executable command (e.g., `"npx"`, `"/usr/bin/claude-code"`)
+</ParamField>
+
+<ParamField path="args" type="string[]" required>
+  Command arguments (e.g., `["opencode", "--stdio"]`)
+</ParamField>
+
+<ParamField path="cwd" type="string" optional>
+  Working directory for the agent process
+</ParamField>
+
+<ParamField path="env" type="Record<string, string>" optional>
+  Environment variables (API keys, MCP config, etc.)
+</ParamField>
+
+<ParamField path="stdin" type="boolean" default="true">
+  Whether to use stdin for communication
+</ParamField>
+
+<ParamField path="stdout" type="boolean" default="true">
+  Whether to capture stdout
+</ParamField>
+
+### MCP Configuration
+
+Each ACP agent is automatically configured with Routa's MCP server:
+
+```typescript
+// src/core/acp/mcp-config-generator.ts:12
+export function generateRoutaMcpConfig(params: {
+  workspaceId: string;
+  sessionId?: string;
+  toolMode?: ToolMode;
+}): RoutaMcpConfig {
+  return {
+    mcpServers: {
+      routa: {
+        transport: {
+          type: "sse",
+          url: `http://localhost:3000/api/mcp?workspaceId=${params.workspaceId}&sessionId=${params.sessionId}`
+        }
+      }
+    }
+  };
+}
+```
+
+This configuration is injected into each agent's environment, enabling them to call MCP coordination tools.
+
+## Example Usage
+
+### Spawning an Agent
+
+```typescript
+import { AcpSessionManager } from "@/core/acp";
+
+const sessionManager = new AcpSessionManager();
+
+// Create a new session
+const session = await sessionManager.createSession({
+  workspaceId: "workspace-123",
+  specialist: "CRAFTER",
+  provider: "opencode",
+  cwd: "/workspace/project",
+  taskId: "task-uuid"
+});
+
+console.log(session.sessionId); // "session-abc123"
+console.log(session.agentId);   // "agent-xyz789"
+```
+
+### Sending Prompts
+
+```typescript
+// Send a prompt to the agent
+const response = await sessionManager.prompt({
+  sessionId: session.sessionId,
+  prompt: [{
+    type: "text",
+    text: "Implement user authentication with JWT"
+  }]
+});
+
+console.log(response.stopReason); // "end_turn"
+```
+
+### Monitoring Events
+
+```typescript
+import { AgentEventBridge } from "@/core/acp";
+
+const eventBridge = new AgentEventBridge();
+
+eventBridge.on("agent-started", (event) => {
+  console.log(`Agent ${event.name} started`);
+});
+
+eventBridge.on("tool-call-block", (event) => {
+  console.log(`Tool called: ${event.toolName} (${event.status})`);
+});
+
+eventBridge.on("file-changes-block", (event) => {
+  console.log(`Files modified: ${event.changes.length}`);
+});
+
+eventBridge.on("agent-completed", (event) => {
+  console.log(`Agent completed: ${event.success ? "SUCCESS" : "FAILURE"}`);
+  if (event.summary) {
+    console.log(`Summary: ${event.summary}`);
+  }
+});
+```
+
+### Custom Provider Adapter
+
+To add a new agent provider, implement a provider adapter:
+
+```typescript
+// src/core/acp/provider-adapter/my-custom-adapter.ts
+import { BaseProviderAdapter } from "./base-adapter";
+
+export class MyCustomAdapter extends BaseProviderAdapter {
+  async initialize(params: InitializeRequest): Promise<InitializeResponse> {
+    // Custom initialization logic
+    return {
+      protocolVersion: params.protocolVersion,
+      agentCapabilities: { loadSession: true },
+      agentInfo: { name: "my-custom-agent", version: "1.0.0" }
+    };
+  }
+
+  async prompt(params: PromptRequest): Promise<PromptResponse> {
+    // Custom prompt handling
+    return { stopReason: "end_turn" };
+  }
+}
+```
+
+Register it in the provider registry:
+
+```typescript
+// src/core/acp/provider-registry.ts
+import { MyCustomAdapter } from "./provider-adapter/my-custom-adapter";
+
+ProviderRegistry.register("my-custom", {
+  name: "My Custom Agent",
+  createAdapter: (system) => new MyCustomAdapter(system),
+  defaultModel: "my-model-v1"
+});
+```
+
+## Session Management
+
+### Session Store
+
+ACP sessions are persisted in memory and optionally synced to the database:
+
+```typescript
+// src/core/acp/http-session-store.ts
+interface AcpSessionRecord {
+  sessionId: string;
+  workspaceId: string;
+  cwd: string;
+  routaAgentId?: string;
+  createdAt: string;
+  lastActiveAt?: string;
+}
+
+const sessionStore = getHttpSessionStore();
+
+// List all sessions
+const sessions = sessionStore.listSessions();
+
+// Get specific session
+const session = sessionStore.getSession("session-id");
+
+// Update last active time
+sessionStore.touchSession("session-id");
+```
+
+### Session Lifecycle
+
+1. **Create** — `newSession` creates a new ACP session and backing Routa agent
+2. **Active** — Agent processes prompts and emits events
+3. **Idle** — No activity for configurable timeout
+4. **Cleanup** — Session terminated, process killed, resources released
+
+## ACP Registry
+
+Discover and install pre-configured agents from the community registry:
+
+```typescript
+import { fetchRegistry, installFromRegistry } from "@/core/acp";
+
+// Fetch available agents
+const registry = await fetchRegistry();
+console.log(registry.agents); // [{ id: "opencode", name: "OpenCode", ... }]
+
+// Install an agent
+const result = await installFromRegistry({
+  agentId: "opencode",
+  platform: "linux" // or "darwin", "win32"
+});
+
+if (result.success) {
+  console.log(`Installed: ${result.command}`);
+}
+```
+
+Registry JSON structure (`src/core/acp/acp-registry.ts:18`):
+
+```typescript
+interface RegistryAgent {
+  id: string;
+  name: string;
+  description: string;
+  distribution: AgentDistribution;
+}
+
+type AgentDistribution =
+  | { type: "npx"; package: string; command?: string }
+  | { type: "uvx"; package: string; command?: string }
+  | { type: "binary"; platforms: Record<PlatformTarget, BinaryPlatformConfig> };
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Provide workspaceId" icon="folder">
+    Every ACP session requires a `workspaceId` to scope operations:
+    
+    ```typescript
+    // WRONG
+    await sessionManager.createSession({ specialist: "CRAFTER" });
+    
+    // CORRECT
+    await sessionManager.createSession({
+      workspaceId: "workspace-123",
+      specialist: "CRAFTER"
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Configure MCP for Each Provider" icon="plug">
+    Use `src/core/acp/mcp-setup.ts:37` to ensure MCP is properly configured:
+    
+    ```typescript
+    import { ensureMcpForProvider } from "@/core/acp";
+    
+    await ensureMcpForProvider({
+      provider: "opencode",
+      workspaceId: "workspace-123",
+      sessionId: "session-456",
+      toolMode: "essential"
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Handle Process Failures Gracefully" icon="shield">
+    ACP processes can fail (missing binaries, API key errors, etc.). Always check installation:
+    
+    ```typescript
+    import { isAgentAvailable } from "@/core/acp";
+    
+    const available = await isAgentAvailable("opencode");
+    if (!available) {
+      console.error("OpenCode not installed. Run: npx opencode --version");
+      return;
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Monitor Agent Events" icon="chart-line">
+    Subscribe to agent events to track progress and detect failures:
+    
+    ```typescript
+    eventBridge.on("agent-failed", (event) => {
+      console.error(`Agent ${event.agentId} failed:`, event.error);
+      // Retry or alert user
+    });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Process Manager
+
+The ACP process manager handles spawning and monitoring agent processes:
+
+```typescript
+// src/core/acp/acp-process-manager.ts
+import { getAcpProcessManager } from "@/core/acp";
+
+const processManager = getAcpProcessManager();
+
+// Spawn a new agent process
+const process = await processManager.spawn({
+  provider: "opencode",
+  workspaceId: "workspace-123",
+  cwd: "/workspace/project",
+  env: {
+    OPENCODE_MCP_CONFIG: JSON.stringify(mcpConfig)
+  }
+});
+
+// Send JSON-RPC message
+await process.send({
+  jsonrpc: "2.0",
+  method: "session/prompt",
+  params: { sessionId: "session-id", prompt: [{ type: "text", text: "Hello" }] },
+  id: 1
+});
+
+// Listen for responses
+process.on("message", (msg) => {
+  console.log("Received:", msg);
+});
+
+// Terminate process
+await process.stop();
+```
+
+## Related Protocols
+
+- **[MCP (Model Context Protocol)](/protocols/mcp)** — Coordination tools exposed to agents
+- **[A2A (Agent-to-Agent)](/protocols/a2a)** — External federation interface
+
+## API Reference
+
+<CardGroup cols={2}>
+  <Card title="ACP Agent" icon="robot" href="/api-reference/acp/agent">
+    Create and manage ACP agent handlers
+  </Card>
+  <Card title="Session Manager" icon="server" href="/api-reference/acp/session-manager">
+    Manage agent sessions and lifecycle
+  </Card>
+  <Card title="Provider Registry" icon="list" href="/api-reference/acp/provider-registry">
+    Register and resolve agent providers
+  </Card>
+  <Card title="Event Bridge" icon="broadcast-tower" href="/api-reference/acp/event-bridge">
+    Monitor agent events in real-time
+  </Card>
+</CardGroup>

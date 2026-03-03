@@ -1,0 +1,600 @@
+---
+title: Agent Tools
+description: MCP tools for agent coordination, delegation, and inter-agent communication
+---
+
+Agent tools enable the core multi-agent coordination patterns in Routa. They handle agent lifecycle, task delegation, messaging, and event subscriptions.
+
+<Info>
+  In **essential** mode, 7 agent tools are available. In **full** mode, all 14 agent tools are available.
+</Info>
+
+## Core Agent Tools (Essential Mode)
+
+### list_agents
+
+List all agents in the workspace with their status and role.
+
+<ParamField path="workspaceId" type="string" optional>
+  Workspace ID (uses default if omitted)
+</ParamField>
+
+**Returns:**
+```json
+[
+  {
+    "id": "agent-uuid",
+    "name": "Coordinator",
+    "role": "ROUTA",
+    "status": "ACTIVE",
+    "parentId": null
+  }
+]
+```
+
+**Usage:**
+```typescript
+const result = await tools.listAgents(workspaceId);
+// Check what other agents are working on to avoid conflicts
+```
+
+---
+
+### read_agent_conversation
+
+Read another agent's conversation history.
+
+<ParamField path="agentId" type="string" required>
+  ID of the agent whose conversation to read
+</ParamField>
+
+<ParamField path="lastN" type="number" optional>
+  Number of recent messages to retrieve
+</ParamField>
+
+<ParamField path="startTurn" type="number" optional>
+  Start turn number (inclusive)
+</ParamField>
+
+<ParamField path="endTurn" type="number" optional>
+  End turn number (inclusive)
+</ParamField>
+
+<ParamField path="includeToolCalls" type="boolean" optional default="false">
+  Include tool call messages
+</ParamField>
+
+**Returns:**
+```json
+{
+  "agentId": "agent-uuid",
+  "agentName": "Implementor-Auth",
+  "messageCount": 15,
+  "messages": [
+    {
+      "role": "user",
+      "content": "Implement JWT authentication",
+      "turn": 0,
+      "timestamp": "2024-03-03T10:00:00Z"
+    }
+  ]
+}
+```
+
+**Usage:**
+```typescript
+// Read last 5 messages from an agent
+const conv = await tools.readAgentConversation({
+  agentId: "agent-123",
+  lastN: 5
+});
+```
+
+---
+
+### create_agent
+
+Create a new agent with a specific role.
+
+<ParamField path="name" type="string" required>
+  Name for the new agent
+</ParamField>
+
+<ParamField path="role" type="string" required>
+  Agent role: `ROUTA` (coordinator), `CRAFTER` (implementor), `GATE` (verifier), or `DEVELOPER`
+</ParamField>
+
+<ParamField path="workspaceId" type="string" optional>
+  Workspace ID (uses default if omitted)
+</ParamField>
+
+<ParamField path="parentId" type="string" optional>
+  Parent agent ID for hierarchy
+</ParamField>
+
+<ParamField path="modelTier" type="string" optional default="SMART">
+  Model tier: `SMART`, `BALANCED`, or `FAST`
+</ParamField>
+
+**Returns:**
+```json
+{
+  "agentId": "new-agent-uuid",
+  "name": "Auth-Implementor",
+  "role": "CRAFTER",
+  "status": "PENDING"
+}
+```
+
+**Usage:**
+```typescript
+const result = await tools.createAgent({
+  name: "Auth-Implementor",
+  role: "CRAFTER",
+  parentId: coordinatorId,
+  modelTier: "FAST"
+});
+```
+
+---
+
+### set_agent_name
+
+Set your agent's name to reflect the current task. **Call this in your first response.**
+
+<ParamField path="name" type="string" required>
+  Short task-focused name (1-5 words)
+</ParamField>
+
+**Returns:**
+```json
+{
+  "ok": true,
+  "name": "Auth-Implementor"
+}
+```
+
+<Warning>
+  Every specialist prompt instructs agents to call this tool first. Names should be descriptive and task-focused.
+</Warning>
+
+---
+
+### delegate_task
+
+Assign a task to an existing agent and activate it.
+
+<ParamField path="agentId" type="string" required>
+  UUID of the agent to delegate to
+</ParamField>
+
+<ParamField path="taskId" type="string" required>
+  UUID of the task to delegate (from `create_task`, NOT a task name)
+</ParamField>
+
+<ParamField path="callerAgentId" type="string" required>
+  UUID of the calling agent
+</ParamField>
+
+**Returns:**
+```json
+{
+  "agentId": "agent-uuid",
+  "taskId": "task-uuid",
+  "status": "delegated"
+}
+```
+
+<Warning>
+  The `taskId` must be a UUID from `create_task`, not a task name or `@@@task` identifier. If you see an error like "Task not found", use `list_tasks` to find the correct UUID or `create_task` to create a new task first.
+</Warning>
+
+---
+
+### delegate_task_to_agent
+
+Delegate a task to a **new agent** by spawning a real agent process. This is the primary delegation tool for coordinators.
+
+<ParamField path="taskId" type="string" required>
+  UUID of the task to delegate (MUST be a UUID from `create_task`, NOT a task name)
+</ParamField>
+
+<ParamField path="callerAgentId" type="string" required>
+  Your agent ID (the coordinator's agent ID)
+</ParamField>
+
+<ParamField path="callerSessionId" type="string" optional>
+  Your session ID (if known)
+</ParamField>
+
+<ParamField path="specialist" type="string" required>
+  Specialist type: `CRAFTER` for implementation, `GATE` for verification, `DEVELOPER` for solo plan+implement
+</ParamField>
+
+<ParamField path="provider" type="string" optional>
+  ACP provider to use (e.g., `claude`, `copilot`, `opencode`). Uses default if omitted.
+</ParamField>
+
+<ParamField path="cwd" type="string" optional>
+  Working directory for the agent
+</ParamField>
+
+<ParamField path="additionalInstructions" type="string" optional>
+  Extra instructions beyond the task content
+</ParamField>
+
+<ParamField path="waitMode" type="string" optional>
+  When to notify: `immediate` (per agent) or `after_all` (when all in parallel group complete)
+</ParamField>
+
+**Returns:**
+```json
+{
+  "agentId": "spawned-agent-uuid",
+  "processId": 12345,
+  "status": "spawned"
+}
+```
+
+**Usage:**
+```typescript
+// Delegate implementation task
+const result = await tools.delegateTaskToAgent({
+  taskId: "dda97509-b414-4c50-9835-73a1ec2f...",
+  callerAgentId: myAgentId,
+  specialist: "CRAFTER",
+  waitMode: "after_all"  // Wait for all parallel tasks
+});
+```
+
+<Info>
+  **IMPORTANT:** First call `set_note_content` on the spec note with `@@@task` blocks — it auto-creates tasks and returns UUIDs. Then use those UUIDs with this tool.
+</Info>
+
+---
+
+### send_message_to_agent
+
+Send a message from one agent to another.
+
+<ParamField path="fromAgentId" type="string" required>
+  ID of the sending agent
+</ParamField>
+
+<ParamField path="toAgentId" type="string" required>
+  ID of the receiving agent
+</ParamField>
+
+<ParamField path="message" type="string" required>
+  Message content
+</ParamField>
+
+**Returns:**
+```json
+{
+  "delivered": true,
+  "toAgentId": "recipient-uuid",
+  "fromAgentId": "sender-uuid"
+}
+```
+
+**Usage:**
+```typescript
+// Ask another agent about their progress
+await tools.messageAgent({
+  fromAgentId: myId,
+  toAgentId: implementorId,
+  message: "Have you completed the auth migration?"
+});
+```
+
+---
+
+### report_to_parent
+
+Submit a completion report to the parent agent. **Required** to signal task completion.
+
+<ParamField path="agentId" type="string" required>
+  ID of the reporting agent
+</ParamField>
+
+<ParamField path="taskId" type="string" required>
+  ID of the completed task
+</ParamField>
+
+<ParamField path="summary" type="string" required>
+  Summary of what was accomplished
+</ParamField>
+
+<ParamField path="filesModified" type="string[]" optional>
+  List of modified files
+</ParamField>
+
+<ParamField path="verificationResults" type="string" optional>
+  Verification output
+</ParamField>
+
+<ParamField path="success" type="boolean" required>
+  Whether the task was completed successfully
+</ParamField>
+
+**Returns:**
+```json
+{
+  "reported": true,
+  "parentId": "parent-agent-uuid",
+  "success": true
+}
+```
+
+**Usage:**
+```typescript
+await tools.reportToParent({
+  agentId: myId,
+  taskId: assignedTaskId,
+  summary: "Implemented JWT auth with refresh tokens. All tests passing.",
+  filesModified: ["src/auth/jwt.ts", "src/auth/middleware.ts"],
+  verificationResults: "npm test -- auth\n✓ 15 tests passing",
+  success: true
+});
+```
+
+<Warning>
+  **CRITICAL:** Every CRAFTER and GATE agent MUST call this tool when finished. Without it, the coordinator won't know the task is complete.
+</Warning>
+
+---
+
+## Extended Agent Tools (Full Mode Only)
+
+### wake_or_create_task_agent
+
+Wake an existing agent assigned to a task, or create a new Crafter agent if none exists.
+
+<ParamField path="taskId" type="string" required>
+  ID of the task
+</ParamField>
+
+<ParamField path="contextMessage" type="string" required>
+  Context message for the agent
+</ParamField>
+
+<ParamField path="callerAgentId" type="string" required>
+  ID of the calling agent
+</ParamField>
+
+<ParamField path="workspaceId" type="string" optional>
+  Workspace ID (uses default if omitted)
+</ParamField>
+
+<ParamField path="agentName" type="string" optional>
+  Name for new agent (if created)
+</ParamField>
+
+<ParamField path="modelTier" type="string" optional>
+  Model tier for new agent
+</ParamField>
+
+**Returns:**
+```json
+{
+  "agentId": "agent-uuid",
+  "action": "woken",  // or "created"
+  "name": "Auth-Implementor"
+}
+```
+
+---
+
+### send_message_to_task_agent
+
+Send a message to the agent currently assigned to a task.
+
+<ParamField path="taskId" type="string" required>
+  ID of the task
+</ParamField>
+
+<ParamField path="message" type="string" required>
+  Message content
+</ParamField>
+
+<ParamField path="callerAgentId" type="string" required>
+  ID of the calling agent
+</ParamField>
+
+---
+
+### get_agent_status
+
+Get the current status, message count, and assigned tasks for an agent.
+
+<ParamField path="agentId" type="string" required>
+  ID of the agent
+</ParamField>
+
+**Returns:**
+```json
+{
+  "agentId": "agent-uuid",
+  "name": "Auth-Implementor",
+  "role": "CRAFTER",
+  "status": "ACTIVE",
+  "modelTier": "FAST",
+  "parentId": "coordinator-uuid",
+  "messageCount": 23,
+  "tasks": [
+    {
+      "id": "task-uuid",
+      "title": "Implement JWT auth",
+      "status": "IN_PROGRESS"
+    }
+  ]
+}
+```
+
+---
+
+### get_agent_summary
+
+Get a summary of an agent including last response, tool call counts, and active tasks.
+
+<ParamField path="agentId" type="string" required>
+  ID of the agent
+</ParamField>
+
+**Returns:**
+```json
+{
+  "agentId": "agent-uuid",
+  "name": "Auth-Implementor",
+  "role": "CRAFTER",
+  "status": "ACTIVE",
+  "messageCount": 23,
+  "toolCallCount": 45,
+  "lastResponse": {
+    "content": "Implemented JWT middleware...",
+    "timestamp": "2024-03-03T10:15:00Z"
+  },
+  "activeTasks": [
+    { "id": "task-uuid", "title": "Implement JWT auth" }
+  ]
+}
+```
+
+---
+
+### subscribe_to_events
+
+Subscribe an agent to workspace events (AGENT_CREATED, TASK_COMPLETED, TASK_STATUS_CHANGED, etc.).
+
+<ParamField path="agentId" type="string" required>
+  ID of the subscribing agent
+</ParamField>
+
+<ParamField path="agentName" type="string" required>
+  Name of the subscribing agent
+</ParamField>
+
+<ParamField path="eventTypes" type="string[]" required>
+  Event types to subscribe to
+</ParamField>
+
+<ParamField path="excludeSelf" type="boolean" optional default="true">
+  Exclude self-generated events
+</ParamField>
+
+<ParamField path="oneShot" type="boolean" optional default="false">
+  Auto-remove after first matching event
+</ParamField>
+
+<ParamField path="waitGroupId" type="string" optional>
+  Wait group ID for `after_all` semantics
+</ParamField>
+
+<ParamField path="priority" type="number" optional default="0">
+  Priority (higher = notified first)
+</ParamField>
+
+**Returns:**
+```json
+{
+  "subscriptionId": "sub-uuid",
+  "eventTypes": ["TASK_COMPLETED"],
+  "oneShot": false,
+  "priority": 0
+}
+```
+
+**Usage:**
+```typescript
+// Subscribe to task completions
+const sub = await tools.subscribeToEvents({
+  agentId: coordinatorId,
+  agentName: "Coordinator",
+  eventTypes: ["TASK_COMPLETED"],
+  oneShot: false
+});
+```
+
+---
+
+### unsubscribe_from_events
+
+Remove an event subscription.
+
+<ParamField path="subscriptionId" type="string" required>
+  ID of the subscription to remove
+</ParamField>
+
+**Returns:**
+```json
+{
+  "unsubscribed": true,
+  "subscriptionId": "sub-uuid"
+}
+```
+
+---
+
+## Common Patterns
+
+### Coordinator Wave Delegation
+
+```typescript
+// 1. Write spec with @@@task blocks (auto-creates tasks)
+const specResult = await tools.setNoteContent({
+  noteId: "spec",
+  content: specWithTaskBlocks,
+  workspaceId
+});
+
+const taskIds = specResult.tasks.map(t => t.taskId);
+
+// 2. Delegate Wave 1 with after_all wait mode
+for (const taskId of wave1TaskIds) {
+  await tools.delegateTaskToAgent({
+    taskId,
+    callerAgentId: myId,
+    specialist: "CRAFTER",
+    waitMode: "after_all"  // Notified when ALL complete
+  });
+}
+
+// 3. END TURN - wait for notification
+```
+
+### Implementor Coordination Check
+
+```typescript
+// Check what other agents are working on
+const agents = await tools.listAgents(workspaceId);
+for (const agent of agents) {
+  if (agent.status === "ACTIVE") {
+    const conv = await tools.readAgentConversation({
+      agentId: agent.id,
+      lastN: 3
+    });
+    // Check for file conflicts
+  }
+}
+```
+
+### Task Completion Report
+
+```typescript
+// When done with a task
+await tools.reportToParent({
+  agentId: myId,
+  taskId: myTaskId,
+  summary: "Completed auth implementation. Tests passing.",
+  filesModified: ["src/auth/jwt.ts"],
+  verificationResults: "npm test\n✓ 15 passing",
+  success: true
+});
+```
+
+## See Also
+
+- [Task Tools](/api/mcp-tools/task-tools) - Task lifecycle management
+- [Note Tools](/api/mcp-tools/note-tools) - Spec and collaboration notes
+- [Specialist Roles](/concepts/specialist-roles) - Role-specific tool usage

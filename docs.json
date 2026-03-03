@@ -1,122 +1,149 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Routa",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#2563eb",
+    "light": "#3b82f6",
+    "dark": "#1e40af"
   },
-  "favicon": "/favicon.svg",
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/phodal/routa"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/phodal/routa"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/architecture",
+              "concepts/multi-agent-coordination",
+              "concepts/specialist-roles",
+              "concepts/task-orchestration",
+              "concepts/protocols"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Protocols",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "protocols/mcp",
+              "protocols/acp",
+              "protocols/a2a"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Guides",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "guides/desktop-app",
+              "guides/web-deployment",
+              "guides/docker-deployment",
+              "guides/custom-specialists",
+              "guides/custom-mcp-servers",
+              "guides/github-virtual-workspace",
+              "guides/workflows"
+            ]
+          },
+          {
+            "group": "Specialists",
+            "pages": [
+              "specialists/overview",
+              "specialists/routa-coordinator",
+              "specialists/crafter-implementor",
+              "specialists/gate-verifier",
+              "specialists/developer",
+              "specialists/creating-custom"
+            ]
+          },
+          {
+            "group": "Development",
+            "pages": [
+              "development/dual-backend",
+              "development/database",
+              "development/testing",
+              "development/contributing"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "REST API",
             "pages": [
-              "api-reference/introduction"
+              "api/overview",
+              "api/health",
+              "api/agents",
+              "api/tasks",
+              "api/notes",
+              "api/workspaces",
+              "api/skills",
+              "api/sessions"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "MCP Tools",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/mcp-tools/overview",
+              "api/mcp-tools/agent-tools",
+              "api/mcp-tools/task-tools",
+              "api/mcp-tools/note-tools",
+              "api/mcp-tools/workspace-tools"
+            ]
+          },
+          {
+            "group": "ACP",
+            "pages": [
+              "api/acp/overview",
+              "api/acp/runtime",
+              "api/acp/registry",
+              "api/acp/install"
+            ]
+          },
+          {
+            "group": "A2A",
+            "pages": [
+              "api/a2a/overview",
+              "api/a2a/sessions",
+              "api/a2a/card",
+              "api/a2a/rpc"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI",
+        "groups": [
+          {
+            "group": "Command Reference",
+            "pages": [
+              "cli/overview",
+              "cli/agent",
+              "cli/task",
+              "cli/chat",
+              "cli/server"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

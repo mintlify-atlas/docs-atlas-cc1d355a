@@ -1,0 +1,692 @@
+---
+title: Note Tools
+description: MCP tools for notes, specs, and task block parsing
+---
+
+Note tools manage shared documents in Routa. Notes serve as the collaboration layer between agents, with special support for the **spec note** and **task blocks**.
+
+<Info>
+  In **essential mode**, 5 note tools are available. In **full mode**, all 7 note tools are available.
+</Info>
+
+## Core Note Tools (Essential Mode)
+
+### create_note
+
+Create a new note in the workspace. Notes are shared documents for agent collaboration.
+
+<ParamField path="title" type="string" required>
+  Note title
+</ParamField>
+
+<ParamField path="content" type="string" optional>
+  Initial note content
+</ParamField>
+
+<ParamField path="noteId" type="string" optional>
+  Custom note ID (auto-generated if omitted)
+</ParamField>
+
+<ParamField path="type" type="string" optional default="general">
+  Note type: `spec`, `task`, or `general`
+</ParamField>
+
+<ParamField path="workspaceId" type="string" optional>
+  Workspace ID (uses default if omitted)
+</ParamField>
+
+<ParamField path="sessionId" type="string" optional>
+  Session ID to scope this note to a specific session
+</ParamField>
+
+**Returns:**
+```json
+{
+  "noteId": "custom-note-id",
+  "title": "API Design Notes",
+  "type": "general"
+}
+```
+
+**Usage:**
+```typescript
+// Create a general note
+const result = await tools.createNote({
+  title: "API Design Decisions",
+  content: "# Auth Strategy\n\nUsing JWT with refresh tokens...",
+  type: "general",
+  workspaceId
+});
+```
+
+---
+
+### read_note
+
+Read the content of a note. Use `noteId='spec'` to read the workspace spec note.
+
+<ParamField path="noteId" type="string" required>
+  ID of the note to read (use `'spec'` for the spec note)
+</ParamField>
+
+<ParamField path="workspaceId" type="string" optional>
+  Workspace ID (uses default if omitted)
+</ParamField>
+
+**Returns:**
+```json
+{
+  "noteId": "spec",
+  "title": "Workspace Spec",
+  "content": "# Goal\n\nImplement JWT authentication...\n\n@@@task\n...",
+  "type": "spec",
+  "metadata": {},
+  "updatedAt": "2024-03-03T10:00:00Z"
+}
+```
+
+**Usage:**
+```typescript
+// Read the spec note
+const spec = await tools.readNote({
+  noteId: "spec",
+  workspaceId
+});
+
+// Read a custom note
+const notes = await tools.readNote({
+  noteId: "api-design",
+  workspaceId
+});
+```
+
+<Info>
+  The spec note is auto-created if it doesn't exist when you read or write to `noteId='spec'`.
+</Info>
+
+---
+
+### list_notes
+
+List all notes in the workspace. Optionally filter by type.
+
+<ParamField path="type" type="string" optional>
+  Filter by note type: `spec`, `task`, or `general`
+</ParamField>
+
+<ParamField path="workspaceId" type="string" optional>
+  Workspace ID (uses default if omitted)
+</ParamField>
+
+**Returns:**
+```json
+[
+  {
+    "noteId": "spec",
+    "title": "Workspace Spec",
+    "type": "spec",
+    "contentPreview": "# Goal\n\nImplement JWT authentication with refresh tokens and role-based access control....",
+    "updatedAt": "2024-03-03T10:00:00Z"
+  },
+  {
+    "noteId": "task-auth-impl",
+    "title": "Implement JWT auth",
+    "type": "task",
+    "contentPreview": "## Objective\n\nAdd JWT-based authentication to the API....",
+    "updatedAt": "2024-03-03T09:30:00Z"
+  }
+]
+```
+
+**Usage:**
+```typescript
+// List all notes
+const allNotes = await tools.listNotes({ workspaceId });
+
+// List only task notes
+const taskNotes = await tools.listNotes({ type: "task", workspaceId });
+```
+
+---
+
+### set_note_content
+
+Set (replace) the content of a note. **Auto-creates tasks from `@@@task` blocks in the spec note.**
+
+<ParamField path="noteId" type="string" required>
+  ID of the note to update
+</ParamField>
+
+<ParamField path="content" type="string" required>
+  New content for the note (replaces existing content)
+</ParamField>
+
+<ParamField path="title" type="string" optional>
+  Update the note title
+</ParamField>
+
+<ParamField path="workspaceId" type="string" optional>
+  Workspace ID (uses default if omitted)
+</ParamField>
+
+<ParamField path="sessionId" type="string" optional>
+  Session ID for scoping auto-created task notes
+</ParamField>
+
+**Returns (when tasks are created from `@@@task` blocks):**
+```json
+{
+  "noteId": "spec",
+  "title": "Workspace Spec",
+  "contentLength": 2453,
+  "updatedAt": "2024-03-03T10:15:00Z",
+  "tasksCreated": 3,
+  "tasks": [
+    {
+      "taskId": "dda97509-b414-4c50-9835-73a1ec2f...",
+      "noteId": "task-dda97509",
+      "title": "Implement JWT middleware"
+    },
+    {
+      "taskId": "e8b2c3a1-5d6f-4e7a-8b9c-0d1e2f3a...",
+      "noteId": "task-e8b2c3a1",
+      "title": "Add refresh endpoint"
+    }
+  ],
+  "hint": "Tasks auto-created from @@@task blocks. Use delegate_task_to_agent with these taskIds."
+}
+```
+
+**Usage:**
+```typescript
+// Write spec with @@@task blocks
+const spec = `
+# Goal
+Implement JWT authentication with refresh tokens
+
+@@@task
+# Implement JWT middleware
+## Objective
+Create Express middleware to verify JWT tokens
+## Scope
+src/auth/middleware.ts only
+## Definition of Done
+- Middleware extracts token from Authorization header
+- Verifies signature with secret key
+- Attaches user to req.user
+@@@
+
+@@@task
+# Add refresh endpoint
+## Objective
+Implement POST /api/refresh to extend sessions
+## Scope
+src/routes/auth.ts
+## Definition of Done
+- Accepts refresh token in request body
+- Returns new access token
+- Rotates refresh token
+@@@
+`;
+
+const result = await tools.setNoteContent({
+  noteId: "spec",
+  content: spec,
+  workspaceId
+});
+
+// result.tasks contains the auto-created task UUIDs
+for (const task of result.tasks) {
+  await tools.delegateTaskToAgent({
+    taskId: task.taskId,  // Use the UUID, not the title
+    callerAgentId: coordinatorId,
+    specialist: "CRAFTER"
+  });
+}
+```
+
+<Warning>
+  **CRITICAL:** When you write `@@@task` blocks to the spec note, tasks are auto-created and returned in the response. Use the returned `taskId` (UUID) for delegation, NOT the task title.
+</Warning>
+
+---
+
+### convert_task_blocks
+
+Manually convert `@@@task` blocks in a note into structured Task Notes and Task records. Returns the created task IDs and note IDs.
+
+<ParamField path="noteId" type="string" required>
+  ID of the note containing `@@@task` blocks (typically `'spec'`)
+</ParamField>
+
+<ParamField path="workspaceId" type="string" optional>
+  Workspace ID (uses default if omitted)
+</ParamField>
+
+**Returns:**
+```json
+{
+  "blocksConverted": 2,
+  "invalidBlocks": 0,
+  "tasks": [
+    {
+      "taskId": "task-uuid-1",
+      "noteId": "task-abc123",
+      "title": "Implement JWT middleware"
+    },
+    {
+      "taskId": "task-uuid-2",
+      "noteId": "task-def456",
+      "title": "Add refresh endpoint"
+    }
+  ]
+}
+```
+
+<Info>
+  You typically don't need to call this manually — `set_note_content` auto-converts `@@@task` blocks in the spec note.
+</Info>
+
+---
+
+## Extended Note Tools (Full Mode Only)
+
+### append_to_note
+
+Append content to an existing note. Useful for adding verification reports, progress updates, etc.
+
+<ParamField path="noteId" type="string" required>
+  ID of the note to append to
+</ParamField>
+
+<ParamField path="content" type="string" required>
+  Content to append
+</ParamField>
+
+<ParamField path="workspaceId" type="string" optional>
+  Workspace ID (uses default if omitted)
+</ParamField>
+
+**Returns:**
+```json
+{
+  "noteId": "spec",
+  "contentLength": 3210,
+  "updatedAt": "2024-03-03T10:30:00Z"
+}
+```
+
+**Usage:**
+```typescript
+// Add verification report to spec
+await tools.appendToNote({
+  noteId: "spec",
+  content: `
+## Verification Report - Wave 1
+
+✅ JWT middleware - VERIFIED
+✅ Refresh endpoint - VERIFIED
+
+All acceptance criteria met.
+`,
+  workspaceId
+});
+```
+
+---
+
+### get_my_task
+
+Get the task note(s) assigned to the calling agent. Returns task details including objective, scope, and acceptance criteria.
+
+<ParamField path="agentId" type="string" required>
+  ID of the calling agent
+</ParamField>
+
+<ParamField path="workspaceId" type="string" optional>
+  Workspace ID (uses default if omitted)
+</ParamField>
+
+**Returns (if task notes found):**
+```json
+[
+  {
+    "noteId": "task-abc123",
+    "title": "Implement JWT middleware",
+    "content": "## Objective\nCreate Express middleware to verify JWT tokens\n...",
+    "linkedTaskId": "task-uuid",
+    "taskStatus": "IN_PROGRESS"
+  }
+]
+```
+
+**Returns (if no task notes, fallback to TaskStore):**
+```json
+[
+  {
+    "taskId": "task-uuid",
+    "title": "Implement JWT middleware",
+    "objective": "Create Express middleware to verify JWT tokens",
+    "scope": "src/auth/middleware.ts only",
+    "acceptanceCriteria": [
+      "Middleware extracts token from Authorization header",
+      "Verifies signature with secret key"
+    ],
+    "verificationCommands": [
+      "npm test -- auth/middleware"
+    ],
+    "status": "IN_PROGRESS"
+  }
+]
+```
+
+**Usage:**
+```typescript
+// CRAFTER agent reads its assigned task
+const myTasks = await tools.getMyTask({
+  agentId: myAgentId,
+  workspaceId
+});
+
+const task = myTasks[0];
+console.log("Working on:", task.title);
+console.log("Objective:", task.objective);
+console.log("Acceptance criteria:", task.acceptanceCriteria);
+```
+
+---
+
+## The Spec Note Workflow
+
+The **spec note** (`noteId='spec'`) is the source of truth for coordinators. It follows this lifecycle:
+
+### 1. Coordinator writes spec with `@@@task` blocks
+
+```typescript
+const spec = `
+# Goal
+Implement JWT authentication
+
+## Acceptance Criteria
+- Login endpoint returns JWT
+- Protected routes verify JWT
+- Refresh endpoint extends sessions
+
+## Tasks
+
+@@@task
+# Implement JWT middleware
+## Objective
+Create Express middleware to verify JWT tokens
+## Scope
+src/auth/middleware.ts
+## Definition of Done
+- Middleware extracts token from Authorization header
+- Verifies signature with secret key
+- Attaches user to req.user
+## Verification
+- npm test -- auth/middleware
+- Manual test: curl with valid/invalid tokens
+@@@
+
+@@@task
+# Add refresh endpoint
+## Objective
+Implement POST /api/refresh
+## Scope
+src/routes/auth.ts
+## Definition of Done
+- Accepts refresh token
+- Returns new access token
+- Rotates refresh token
+## Verification
+- npm test -- routes/auth
+@@@
+`;
+
+const result = await tools.setNoteContent({
+  noteId: "spec",
+  content: spec,
+  workspaceId
+});
+
+// Tasks auto-created!
+console.log(result.tasks);
+// [
+//   { taskId: "uuid-1", noteId: "task-...", title: "Implement JWT middleware" },
+//   { taskId: "uuid-2", noteId: "task-...", title: "Add refresh endpoint" }
+// ]
+```
+
+### 2. Auto-conversion happens
+
+- Each `@@@task` block is parsed
+- A **Task record** is created in the TaskStore (with UUID)
+- A **Task Note** is created with the full task content
+- The spec note is updated: `@@@task` blocks are replaced with task links
+
+### 3. Coordinator delegates using UUIDs
+
+```typescript
+for (const task of result.tasks) {
+  await tools.delegateTaskToAgent({
+    taskId: task.taskId,  // Use UUID, not title
+    callerAgentId: coordinatorId,
+    specialist: "CRAFTER",
+    waitMode: "after_all"
+  });
+}
+```
+
+### 4. CRAFTER reads task note
+
+```typescript
+const myTasks = await tools.getMyTask({
+  agentId: myAgentId,
+  workspaceId
+});
+
+const task = myTasks[0];
+// Has objective, scope, definition of done, verification commands
+```
+
+### 5. Coordinator updates spec with results
+
+```typescript
+await tools.appendToNote({
+  noteId: "spec",
+  content: `
+## Wave 1 Results
+
+✅ JWT middleware - COMPLETED
+✅ Refresh endpoint - COMPLETED
+
+All tests passing.
+`,
+  workspaceId
+});
+```
+
+---
+
+## Task Block Syntax
+
+Task blocks use this format:
+
+```markdown
+@@@task
+# Task Title
+## Objective
+What this task achieves (1-2 sentences)
+
+## Scope
+Files/areas in scope (and what is NOT in scope)
+
+## Inputs
+- Links to relevant notes/spec sections
+- Context needed to start
+
+## Definition of Done
+- Specific, testable completion criteria
+- No vague language ("better", "improved", etc.)
+
+## Verification
+- Exact commands to run
+- Expected output
+- Manual test steps if needed
+@@@
+```
+
+### Required sections
+
+- `# Task Title` (level-1 heading)
+- `## Objective`
+
+### Optional sections
+
+- `## Scope`
+- `## Inputs`
+- `## Definition of Done`
+- `## Verification`
+
+Any content not in a recognized section goes into the task's `content` field.
+
+---
+
+## Note Types
+
+### `spec`
+
+The workspace spec note. Auto-created, always has `noteId='spec'`.
+
+**Purpose:**
+- Source of truth for the workspace
+- Contains `@@@task` blocks that auto-convert to tasks
+- Updated by coordinators throughout the workflow
+
+### `task`
+
+Task notes created from `@@@task` blocks.
+
+**Purpose:**
+- Detailed task instructions for implementors
+- Contains objective, scope, definition of done, verification commands
+- Linked to a Task record via `metadata.linkedTaskId`
+
+### `general`
+
+General-purpose notes for collaboration.
+
+**Purpose:**
+- Design discussions
+- Architecture decisions
+- Investigation findings
+- Verification reports
+
+---
+
+## Common Patterns
+
+### Spec-First Coordination
+
+```typescript
+// 1. Write spec with tasks
+const specResult = await tools.setNoteContent({
+  noteId: "spec",
+  content: specWithTaskBlocks,
+  workspaceId
+});
+
+// 2. Delegate all tasks
+for (const task of specResult.tasks) {
+  await tools.delegateTaskToAgent({
+    taskId: task.taskId,
+    callerAgentId: coordinatorId,
+    specialist: "CRAFTER",
+    waitMode: "after_all"
+  });
+}
+
+// 3. END TURN and wait for completion
+```
+
+### Implementor Task Read
+
+```typescript
+// Read assigned task
+const myTasks = await tools.getMyTask({
+  agentId: myAgentId,
+  workspaceId
+});
+
+const task = myTasks[0];
+
+// Also read the spec for context
+const spec = await tools.readNote({
+  noteId: "spec",
+  workspaceId
+});
+```
+
+### Progress Updates
+
+```typescript
+// Update task note with progress
+await tools.appendToNote({
+  noteId: myTaskNoteId,
+  content: `
+## Progress Update
+
+Completed JWT middleware implementation.
+
+Files modified:
+- src/auth/middleware.ts
+- src/auth/jwt.ts
+
+Tests:
+✓ Token validation
+✓ Error handling
+✓ User extraction
+`,
+  workspaceId
+});
+```
+
+### Verification Report
+
+```typescript
+// GATE agent adds verification report
+await tools.appendToNote({
+  noteId: "spec",
+  content: `
+## Verification - JWT Middleware
+
+✅ APPROVED
+
+Acceptance Criteria:
+- ✅ Middleware extracts token from Authorization header
+- ✅ Verifies signature with secret key
+- ✅ Attaches user to req.user
+
+Tests run:
+\`\`\`
+npm test -- auth/middleware
+✓ 8 tests passing
+\`\`\`
+
+Manual testing:
+- ✅ Valid token: user attached correctly
+- ✅ Invalid token: returns 401
+- ✅ Missing token: returns 401
+`,
+  workspaceId
+});
+```
+
+---
+
+## See Also
+
+- [Agent Tools](/api/mcp-tools/agent-tools) - Delegation and coordination
+- [Task Tools](/api/mcp-tools/task-tools) - Task lifecycle management
+- [Specialist Roles](/concepts/specialist-roles) - Role-specific workflows

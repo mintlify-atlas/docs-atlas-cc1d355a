@@ -1,0 +1,697 @@
+---
+title: Workflow Configuration and Execution
+description: Automate multi-step agent processes with YAML workflows
+icon: sitemap
+---
+
+## Overview
+
+Routa workflows enable you to automate complex, multi-step agent processes using declarative YAML configuration. Workflows orchestrate multiple specialists in sequence or parallel, with conditional execution, retries, and output passing.
+
+**Key features:**
+- **Declarative YAML** - Define workflows as code
+- **Specialist orchestration** - Chain multiple agents together
+- **Parallel execution** - Run steps concurrently
+- **Conditional steps** - Execute based on previous outputs
+- **Variable substitution** - Reference environment variables and step outputs
+- **Retry logic** - Handle transient failures automatically
+- **Multiple triggers** - Manual, webhook, or scheduled execution
+
+## Workflow Definition
+
+Workflows are defined in YAML files with the following structure:
+
+```yaml workflow.yaml
+name: "My Workflow"
+description: "Automates X, Y, and Z"
+version: "1.0.0"
+
+trigger:
+  type: manual  # manual, webhook, schedule
+
+variables:
+  BASE_URL: "https://api.example.com"
+  API_KEY: "${API_KEY}"  # From environment
+
+steps:
+  - name: step-1
+    specialist: DEVELOPER
+    input: "Do task X"
+    output_key: step1_output
+
+  - name: step-2
+    specialist: GATE
+    input: "Verify ${step1_output}"
+    if: "${step1_output} != null"
+```
+
+See type definitions: [src/core/workflows/workflow-types.ts](https://github.com/routa/routa-js/blob/main/src/core/workflows/workflow-types.ts)
+
+## Workflow Schema
+
+### Top-Level Fields
+
+```yaml
+name: string                    # Workflow name (required)
+description?: string            # Optional description
+version?: string                # Version string (e.g., "1.0.0")
+trigger?: TriggerConfig         # How the workflow is triggered
+variables?: Record<string, string>  # Variable substitution map
+steps: WorkflowStep[]           # Ordered list of steps (required)
+```
+
+### Trigger Configuration
+
+```yaml
+trigger:
+  type: manual | webhook | schedule
+  source?: string     # For webhook: "github", "gitlab", etc.
+  event?: string      # For webhook: "pull_request.opened", etc.
+  cron?: string       # For schedule: "0 0 * * *" (cron expression)
+```
+
+### Workflow Steps
+
+```yaml
+steps:
+  - name: string               # Step name (unique within workflow)
+    specialist: string         # Specialist role (ROUTA, CRAFTER, etc.)
+    adapter?: string           # Adapter: "claude-code-sdk", "opencode-sdk", "acp"
+    config?: StepConfig        # Adapter configuration
+    input?: string             # Input template with variable substitution
+    actions?: string[] | object[]  # Actions for the agent
+    output_key?: string        # Store output under this key
+    if?: string                # Condition: only run if true
+    parallel_group?: string    # Steps in same group run concurrently
+    on_failure?: stop | continue | retry
+    max_retries?: number       # Max retries (when on_failure = retry)
+    timeout_secs?: number      # Timeout in seconds (default: 300)
+```
+
+### Step Configuration
+
+```yaml
+config:
+  model?: string               # Model override
+  max_turns?: number           # Max conversation turns
+  max_tokens?: number          # Max response tokens
+  base_url?: string            # API endpoint override
+  api_key?: string             # API key (supports ${ENV_VAR})
+  temperature?: number         # Generation temperature
+  system_prompt?: string       # System prompt override
+  cwd?: string                 # Working directory
+  env?: Record<string, string> # Environment variables
+```
+
+## Variable Substitution
+
+Workflows support `${VAR}` syntax for variable substitution:
+
+```yaml
+variables:
+  API_URL: "https://api.example.com"
+  API_KEY: "${API_KEY}"  # From environment
+  BRANCH: "main"
+
+steps:
+  - name: fetch-data
+    specialist: DEVELOPER
+    input: "Fetch data from ${API_URL}/repos using key ${API_KEY}"
+    config:
+      env:
+        BRANCH: "${BRANCH}"
+```
+
+**Variable resolution order:**
+1. Workflow `variables` map
+2. Step outputs (via `output_key`)
+3. Environment variables
+4. Literal string (if no match)
+
+## Step Outputs
+
+Steps can produce outputs that are referenced by downstream steps:
+
+```yaml
+steps:
+  # Step 1: Run tests
+  - name: run-tests
+    specialist: DEVELOPER
+    input: "Run tests and report results"
+    output_key: test_results
+
+  # Step 2: Use output from step 1
+  - name: analyze-results
+    specialist: GATE
+    input: "Analyze test results: ${test_results}"
+    if: "${test_results} != null"
+```
+
+**Output storage:**
+- Stored in `WorkflowRun.stepOutputs` map
+- Keyed by `output_key` or step `name`
+- Available to all subsequent steps
+
+## Conditional Execution
+
+Steps can be conditionally executed based on previous outputs:
+
+```yaml
+steps:
+  - name: check-status
+    specialist: DEVELOPER
+    input: "Check API health"
+    output_key: api_status
+
+  - name: deploy
+    specialist: DEVELOPER
+    input: "Deploy to production"
+    if: "${api_status} == 'healthy'"
+
+  - name: alert
+    specialist: DEVELOPER
+    input: "Send alert to Slack"
+    if: "${api_status} != 'healthy'"
+```
+
+**Condition syntax:**
+- Simple string comparison
+- Check for null/existence: `${var} != null`
+- Equality: `${var} == 'value'`
+- Inequality: `${var} != 'value'`
+
+## Parallel Execution
+
+Steps in the same `parallel_group` run concurrently:
+
+```yaml
+steps:
+  # These run in parallel
+  - name: lint-code
+    specialist: DEVELOPER
+    input: "Run linter"
+    parallel_group: "checks"
+
+  - name: type-check
+    specialist: DEVELOPER
+    input: "Run type checker"
+    parallel_group: "checks"
+
+  - name: run-tests
+    specialist: DEVELOPER
+    input: "Run unit tests"
+    parallel_group: "checks"
+
+  # This waits for all "checks" to complete
+  - name: report
+    specialist: GATE
+    input: "Report results"
+```
+
+**Execution order:**
+1. Steps without `parallel_group` run sequentially
+2. Steps in a `parallel_group` run concurrently
+3. Next sequential step waits for all parallel steps to complete
+
+## Error Handling
+
+Control what happens when a step fails:
+
+```yaml
+steps:
+  # Stop workflow on failure (default)
+  - name: critical-step
+    specialist: DEVELOPER
+    input: "Do critical work"
+    on_failure: stop
+
+  # Continue to next step on failure
+  - name: optional-step
+    specialist: DEVELOPER
+    input: "Do optional work"
+    on_failure: continue
+
+  # Retry up to 3 times on failure
+  - name: flaky-step
+    specialist: DEVELOPER
+    input: "Call flaky API"
+    on_failure: retry
+    max_retries: 3
+```
+
+**Failure modes:**
+- **stop** (default) - Stop workflow execution, mark as FAILED
+- **continue** - Log error, continue to next step
+- **retry** - Retry up to `max_retries` times, then stop if still failing
+
+## Workflow Examples
+
+### Example 1: PR Review Workflow
+
+```yaml pr-review.yaml
+name: "Pull Request Review"
+description: "Automated PR review and approval"
+version: "1.0.0"
+
+trigger:
+  type: webhook
+  source: github
+  event: pull_request.opened
+
+variables:
+  GITHUB_TOKEN: "${GITHUB_TOKEN}"
+  PR_NUMBER: "${GITHUB_PR_NUMBER}"
+
+steps:
+  - name: fetch-pr
+    specialist: DEVELOPER
+    input: "Fetch PR #${PR_NUMBER} details from GitHub"
+    output_key: pr_details
+
+  - name: review-code
+    specialist: CODE_REVIEWER
+    input: "Review code changes in PR #${PR_NUMBER}"
+    output_key: review_comments
+
+  - name: run-tests
+    specialist: DEVELOPER
+    input: "Run test suite"
+    output_key: test_results
+    parallel_group: "validation"
+
+  - name: security-scan
+    specialist: SECURITY_AUDITOR
+    input: "Scan for security issues"
+    output_key: security_report
+    parallel_group: "validation"
+
+  - name: post-review
+    specialist: DEVELOPER
+    input: "Post review comments: ${review_comments}"
+    if: "${review_comments} != null"
+
+  - name: approve-pr
+    specialist: DEVELOPER
+    input: "Approve PR if tests pass and no security issues"
+    if: "${test_results} == 'pass' && ${security_report} == 'clean'"
+```
+
+### Example 2: Deployment Workflow
+
+```yaml deploy.yaml
+name: "Production Deployment"
+description: "Deploy to production with rollback"
+version: "1.0.0"
+
+trigger:
+  type: manual
+
+variables:
+  ENV: "production"
+  DEPLOY_USER: "${USER}"
+
+steps:
+  - name: pre-deploy-check
+    specialist: GATE
+    input: "Verify all tests pass and main is up to date"
+    on_failure: stop
+
+  - name: build
+    specialist: DEVELOPER
+    input: "Build production bundle"
+    output_key: build_artifact
+    timeout_secs: 600
+
+  - name: deploy
+    specialist: DEVELOPER
+    input: "Deploy ${build_artifact} to ${ENV}"
+    output_key: deploy_status
+    on_failure: retry
+    max_retries: 2
+
+  - name: smoke-test
+    specialist: GATE
+    input: "Run smoke tests on ${ENV}"
+    output_key: smoke_test_results
+
+  - name: rollback
+    specialist: DEVELOPER
+    input: "Rollback deployment"
+    if: "${smoke_test_results} == 'fail'"
+
+  - name: notify-success
+    specialist: DEVELOPER
+    input: "Send success notification to Slack"
+    if: "${smoke_test_results} == 'pass'"
+```
+
+### Example 3: Scheduled Maintenance
+
+```yaml maintenance.yaml
+name: "Daily Maintenance"
+description: "Daily database cleanup and optimization"
+version: "1.0.0"
+
+trigger:
+  type: schedule
+  cron: "0 2 * * *"  # 2 AM daily
+
+variables:
+  DATABASE_URL: "${DATABASE_URL}"
+
+steps:
+  - name: backup-db
+    specialist: DEVELOPER
+    input: "Create database backup"
+    output_key: backup_file
+    on_failure: stop
+
+  - name: cleanup-old-data
+    specialist: DEVELOPER
+    input: "Delete records older than 90 days"
+    on_failure: continue
+
+  - name: optimize-tables
+    specialist: DEVELOPER
+    input: "Run VACUUM ANALYZE on all tables"
+    on_failure: continue
+
+  - name: verify-backup
+    specialist: GATE
+    input: "Verify backup ${backup_file} is valid"
+
+  - name: report
+    specialist: DEVELOPER
+    input: "Send maintenance report to ops channel"
+```
+
+### Example 4: Multi-Repo Analysis
+
+```yaml analyze-repos.yaml
+name: "Multi-Repository Analysis"
+description: "Analyze multiple repositories in parallel"
+version: "1.0.0"
+
+variables:
+  REPOS: "repo1,repo2,repo3"
+  ORG: "myorg"
+
+steps:
+  # Analyze repos in parallel
+  - name: analyze-repo1
+    specialist: CODE_ANALYZER
+    input: "Analyze ${ORG}/repo1"
+    output_key: repo1_report
+    parallel_group: "analysis"
+
+  - name: analyze-repo2
+    specialist: CODE_ANALYZER
+    input: "Analyze ${ORG}/repo2"
+    output_key: repo2_report
+    parallel_group: "analysis"
+
+  - name: analyze-repo3
+    specialist: CODE_ANALYZER
+    input: "Analyze ${ORG}/repo3"
+    output_key: repo3_report
+    parallel_group: "analysis"
+
+  # Aggregate results
+  - name: aggregate
+    specialist: DEVELOPER
+    input: |
+      Aggregate analysis results:
+      - Repo1: ${repo1_report}
+      - Repo2: ${repo2_report}
+      - Repo3: ${repo3_report}
+    output_key: summary
+
+  - name: generate-dashboard
+    specialist: DEVELOPER
+    input: "Generate dashboard from ${summary}"
+```
+
+## Running Workflows
+
+### Via REST API
+
+#### Create Workflow
+
+```bash
+curl -X POST http://localhost:3000/api/workflows \
+  -H "Content-Type: application/json" \
+  -d @workflow.json
+```
+
+#### Trigger Workflow Run
+
+```bash
+curl -X POST http://localhost:3000/api/workflows/<workflow-id>/runs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "workspaceId": "default",
+    "triggerSource": "manual"
+  }'
+```
+
+Response:
+```json
+{
+  "id": "run-123",
+  "workflowId": "wf-456",
+  "workflowName": "My Workflow",
+  "status": "PENDING",
+  "totalSteps": 5,
+  "completedSteps": 0,
+  "createdAt": "2026-03-03T12:00:00.000Z"
+}
+```
+
+#### Get Workflow Run Status
+
+```bash
+curl http://localhost:3000/api/workflows/runs/<run-id>
+```
+
+Response:
+```json
+{
+  "id": "run-123",
+  "status": "RUNNING",
+  "currentStepName": "step-2",
+  "completedSteps": 1,
+  "totalSteps": 5,
+  "stepOutputs": {
+    "step1_output": "Result from step 1"
+  }
+}
+```
+
+#### List Workflow Runs
+
+```bash
+curl http://localhost:3000/api/workflows/<workflow-id>/runs
+```
+
+#### Cancel Workflow Run
+
+```bash
+curl -X POST http://localhost:3000/api/workflows/runs/<run-id>/cancel
+```
+
+### Via CLI
+
+```bash
+# Run workflow
+routa workflow run my-workflow.yaml
+
+# Run with variables
+routa workflow run my-workflow.yaml \
+  --var API_KEY=sk-... \
+  --var ENV=production
+
+# List runs
+routa workflow list-runs
+
+# Get run status
+routa workflow status <run-id>
+
+# Cancel run
+routa workflow cancel <run-id>
+```
+
+## Workflow Storage
+
+Workflows and runs are stored in the database:
+
+```sql
+CREATE TABLE workflows (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  version TEXT,
+  definition JSONB NOT NULL,  -- Full YAML as JSON
+  workspace_id TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE workflow_runs (
+  id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL,
+  workflow_name TEXT NOT NULL,
+  workflow_version TEXT,
+  workspace_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'CANCELLED')),
+  current_step_name TEXT,
+  trigger_payload TEXT,
+  trigger_source TEXT NOT NULL,
+  step_outputs JSONB,
+  error_message TEXT,
+  total_steps INTEGER NOT NULL,
+  completed_steps INTEGER DEFAULT 0,
+  started_at TIMESTAMP,
+  completed_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+See implementation: [src/core/workflows/workflow-store.ts](https://github.com/routa/routa-js/blob/main/src/core/workflows/workflow-store.ts)
+
+## Monitoring and Debugging
+
+### View Run Logs
+
+```bash
+# Get run details
+curl http://localhost:3000/api/workflows/runs/<run-id>
+
+# Get step outputs
+curl http://localhost:3000/api/workflows/runs/<run-id>/outputs
+
+# Get error details (if failed)
+curl http://localhost:3000/api/workflows/runs/<run-id>/error
+```
+
+### Debug Failed Runs
+
+```bash
+# Check which step failed
+curl http://localhost:3000/api/workflows/runs/<run-id> | jq '.currentStepName, .errorMessage'
+
+# View step outputs up to failure
+curl http://localhost:3000/api/workflows/runs/<run-id>/outputs | jq
+
+# Re-run from failed step
+curl -X POST http://localhost:3000/api/workflows/runs/<run-id>/retry
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Keep steps focused">
+    Each step should do one thing well:
+    ```yaml
+    # Good
+    - name: run-tests
+      input: "Run unit tests"
+    - name: check-coverage
+      input: "Check test coverage > 80%"
+
+    # Avoid
+    - name: test-and-deploy
+      input: "Run tests and deploy if pass"
+    ```
+  </Accordion>
+
+  <Accordion title="Use parallel groups for independent tasks">
+    ```yaml
+    steps:
+      - name: lint
+        parallel_group: "checks"
+      - name: type-check
+        parallel_group: "checks"
+      - name: test
+        parallel_group: "checks"
+    ```
+  </Accordion>
+
+  <Accordion title="Set appropriate timeouts">
+    ```yaml
+    - name: long-running-task
+      timeout_secs: 1800  # 30 minutes
+    ```
+    Default is 300s (5 minutes).
+  </Accordion>
+
+  <Accordion title="Use output keys for dependencies">
+    ```yaml
+    - name: build
+      output_key: artifact
+    - name: deploy
+      input: "Deploy ${artifact}"
+    ```
+  </Accordion>
+
+  <Accordion title="Handle failures gracefully">
+    ```yaml
+    - name: optional-task
+      on_failure: continue
+    - name: flaky-api
+      on_failure: retry
+      max_retries: 3
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Workflow fails to start">
+    - Check YAML syntax: `yamllint workflow.yaml`
+    - Verify all specialists exist
+    - Ensure variables are defined
+  </Accordion>
+
+  <Accordion title="Step timeout">
+    - Increase `timeout_secs` for the step
+    - Check if agent is stuck waiting for user input
+    - Review agent conversation logs
+  </Accordion>
+
+  <Accordion title="Variable not substituted">
+    - Verify variable is defined in `variables` or environment
+    - Check syntax: `${VAR}` not `$VAR`
+    - Ensure step output key matches reference
+  </Accordion>
+
+  <Accordion title="Parallel steps not running concurrently">
+    - Verify all steps have the same `parallel_group` value
+    - Check if previous sequential step completed
+    - Review workflow execution logs
+  </Accordion>
+
+  <Accordion title="Conditional step not executing">
+    - Check condition syntax
+    - Verify referenced output key exists
+    - Review step outputs: `GET /api/workflows/runs/<run-id>/outputs`
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Custom Specialists" icon="user-gear" href="/guides/custom-specialists">
+    Create specialists for workflow steps
+  </Card>
+  <Card title="Custom MCP Servers" icon="plug" href="/guides/custom-mcp-servers">
+    Give workflows access to external tools
+  </Card>
+  <Card title="GitHub Integration" icon="github" href="/guides/github-virtual-workspace">
+    Trigger workflows from GitHub events
+  </Card>
+  <Card title="Desktop App" icon="desktop" href="/guides/desktop-app">
+    Run workflows in desktop environment
+  </Card>
+</CardGroup>

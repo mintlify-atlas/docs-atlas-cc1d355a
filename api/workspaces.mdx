@@ -1,0 +1,523 @@
+---
+title: Workspace Management
+description: Create and manage workspaces that contain agents, tasks, and notes
+---
+
+## Overview
+
+Workspaces are containers that organize agents, tasks, notes, and codebases. Each workspace represents a project or collection of related work.
+
+## Workspace Status
+
+| Status | Description |
+|--------|-------------|
+| `active` | Workspace is currently active |
+| `archived` | Workspace has been archived |
+
+## List Workspaces
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:3000/api/workspaces
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/workspaces');
+const data = await response.json();
+console.log(data.workspaces);
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:3000/api/workspaces')
+workspaces = response.json()['workspaces']
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="GET /api/workspaces" type="GET">
+  List all workspaces
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="status" type="string">
+  Filter by status: `active` or `archived`
+</ParamField>
+
+### Response
+
+<ResponseField name="workspaces" type="array" required>
+  Array of workspace objects
+</ResponseField>
+
+### Workspace Object
+
+<ResponseField name="id" type="string" required>
+  Unique workspace identifier
+</ResponseField>
+
+<ResponseField name="title" type="string" required>
+  Workspace title
+</ResponseField>
+
+<ResponseField name="repoPath" type="string">
+  Path to associated repository
+</ResponseField>
+
+<ResponseField name="branch" type="string">
+  Git branch name
+</ResponseField>
+
+<ResponseField name="status" type="string" required>
+  Workspace status: `active` or `archived`
+</ResponseField>
+
+<ResponseField name="metadata" type="object" required>
+  Additional metadata as key-value pairs
+</ResponseField>
+
+<ResponseField name="createdAt" type="string" required>
+  ISO 8601 timestamp of creation
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string" required>
+  ISO 8601 timestamp of last update
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "workspaces": [
+    {
+      "id": "workspace-123",
+      "title": "My Project",
+      "repoPath": "/path/to/repo",
+      "branch": "main",
+      "status": "active",
+      "metadata": {
+        "description": "Main project workspace"
+      },
+      "createdAt": "2026-03-03T10:00:00.000Z",
+      "updatedAt": "2026-03-03T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+## Create Workspace
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/api/workspaces \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "My Project",
+    "repoPath": "/path/to/repo",
+    "branch": "main",
+    "metadata": {"description": "Main workspace"}
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/workspaces', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    title: 'My Project',
+    repoPath: '/path/to/repo',
+    branch: 'main',
+    metadata: { description: 'Main workspace' }
+  })
+});
+const data = await response.json();
+console.log(data.workspace.id);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'http://localhost:3000/api/workspaces',
+    json={
+        'title': 'My Project',
+        'repoPath': '/path/to/repo',
+        'branch': 'main',
+        'metadata': {'description': 'Main workspace'}
+    }
+)
+workspace = response.json()['workspace']
+print(workspace['id'])
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="POST /api/workspaces" type="POST">
+  Create a new workspace
+</ParamField>
+
+### Request Body
+
+<ParamField body="title" type="string" required>
+  Workspace title
+</ParamField>
+
+<ParamField body="repoPath" type="string">
+  Path to associated repository
+</ParamField>
+
+<ParamField body="branch" type="string">
+  Git branch name
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  Additional metadata as key-value pairs
+</ParamField>
+
+### Response
+
+<ResponseField name="workspace" type="object" required>
+  The created workspace object
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "workspace": {
+    "id": "workspace-123",
+    "title": "My Project",
+    "repoPath": "/path/to/repo",
+    "branch": "main",
+    "status": "active",
+    "metadata": {
+      "description": "Main workspace"
+    },
+    "createdAt": "2026-03-03T10:00:00.000Z",
+    "updatedAt": "2026-03-03T10:00:00.000Z"
+  }
+}
+```
+
+## Get Workspace by ID
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:3000/api/workspaces/workspace-123
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/workspaces/workspace-123');
+const data = await response.json();
+console.log(data.workspace);
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:3000/api/workspaces/workspace-123')
+workspace = response.json()['workspace']
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="GET /api/workspaces/{id}" type="GET">
+  Get a single workspace with its codebases
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The workspace ID
+</ParamField>
+
+### Response
+
+<ResponseField name="workspace" type="object" required>
+  The workspace object
+</ResponseField>
+
+<ResponseField name="codebases" type="array" required>
+  Array of codebase objects associated with this workspace
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "workspace": {
+    "id": "workspace-123",
+    "title": "My Project",
+    "status": "active",
+    "createdAt": "2026-03-03T10:00:00.000Z",
+    "updatedAt": "2026-03-03T10:00:00.000Z"
+  },
+  "codebases": [
+    {
+      "id": "codebase-456",
+      "name": "main-repo",
+      "path": "/path/to/repo",
+      "sourceType": "local"
+    }
+  ]
+}
+```
+
+### Status Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| `200` | Success |
+| `404` | Workspace not found |
+
+## Update Workspace
+
+<CodeGroup>
+```bash cURL
+curl -X PATCH http://localhost:3000/api/workspaces/workspace-123 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Updated Project Name",
+    "repoPath": "/new/path",
+    "branch": "develop",
+    "status": "active",
+    "metadata": {"version": "2.0"}
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/workspaces/workspace-123', {
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    title: 'Updated Project Name',
+    status: 'active'
+  })
+});
+const data = await response.json();
+console.log(data.workspace);
+```
+
+```python Python
+import requests
+
+response = requests.patch(
+    'http://localhost:3000/api/workspaces/workspace-123',
+    json={
+        'title': 'Updated Project Name',
+        'status': 'active'
+    }
+)
+workspace = response.json()['workspace']
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="PATCH /api/workspaces/{id}" type="PATCH">
+  Update workspace properties
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The workspace ID
+</ParamField>
+
+### Request Body
+
+All fields are optional. Only provided fields will be updated.
+
+<ParamField body="title" type="string">
+  New workspace title
+</ParamField>
+
+<ParamField body="repoPath" type="string">
+  New repository path
+</ParamField>
+
+<ParamField body="branch" type="string">
+  New branch name
+</ParamField>
+
+<ParamField body="status" type="string">
+  New status: `active` or `archived`
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  Metadata to merge with existing metadata
+</ParamField>
+
+### Response
+
+<ResponseField name="workspace" type="object" required>
+  The updated workspace object
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "workspace": {
+    "id": "workspace-123",
+    "title": "Updated Project Name",
+    "repoPath": "/new/path",
+    "branch": "develop",
+    "status": "active",
+    "metadata": {
+      "version": "2.0"
+    },
+    "createdAt": "2026-03-03T10:00:00.000Z",
+    "updatedAt": "2026-03-03T11:00:00.000Z"
+  }
+}
+```
+
+## Delete Workspace
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:3000/api/workspaces/workspace-123
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/workspaces/workspace-123', {
+  method: 'DELETE'
+});
+const result = await response.json();
+console.log(result.deleted); // true
+```
+
+```python Python
+import requests
+
+response = requests.delete('http://localhost:3000/api/workspaces/workspace-123')
+result = response.json()
+print(result['deleted'])  # True
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="DELETE /api/workspaces/{id}" type="DELETE">
+  Delete a workspace
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The workspace ID to delete
+</ParamField>
+
+### Response
+
+<ResponseField name="deleted" type="boolean" required>
+  Always `true` when successful
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "deleted": true
+}
+```
+
+## Archive Workspace
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/api/workspaces/workspace-123/archive \
+  -H "Content-Type: application/json" \
+  -d '{"archive": true}'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/workspaces/workspace-123/archive', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ archive: true })
+});
+const data = await response.json();
+console.log(data.workspace.status); // "archived"
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'http://localhost:3000/api/workspaces/workspace-123/archive',
+    json={'archive': True}
+)
+workspace = response.json()['workspace']
+print(workspace['status'])  # "archived"
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="POST /api/workspaces/{id}/archive" type="POST">
+  Archive or unarchive a workspace
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The workspace ID
+</ParamField>
+
+### Request Body
+
+<ParamField body="archive" type="boolean">
+  Set to `true` to archive, `false` to unarchive
+</ParamField>
+
+### Response
+
+<ResponseField name="workspace" type="object" required>
+  The updated workspace with new status
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "workspace": {
+    "id": "workspace-123",
+    "title": "My Project",
+    "status": "archived",
+    "createdAt": "2026-03-03T10:00:00.000Z",
+    "updatedAt": "2026-03-03T12:00:00.000Z"
+  }
+}
+```
+
+## Codebase Source Types
+
+| Source Type | Description |
+|-------------|-------------|
+| `local` | Local filesystem codebase |
+| `github` | GitHub repository codebase |
+
+## Error Responses
+
+### 400 Bad Request
+
+```json
+{
+  "error": "title is required"
+}
+```
+
+### 404 Not Found
+
+```json
+{
+  "error": "Workspace not found"
+}
+```

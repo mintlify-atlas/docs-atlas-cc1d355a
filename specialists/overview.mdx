@@ -1,0 +1,179 @@
+---
+title: Specialist System Overview
+description: Understanding Routa's multi-agent specialist system
+---
+
+## What are Specialists?
+
+Specialists are role-based agent configurations that define how agents behave in Routa's multi-agent orchestration system. Each specialist has a specific purpose, system prompt, and set of constraints that guide its behavior.
+
+Routa provides four core specialists:
+
+- **Routa (Coordinator)** - Plans work, breaks down tasks, delegates to sub-agents
+- **Crafter (Implementor)** - Executes implementation tasks, writes code
+- **Gate (Verifier)** - Reviews work and verifies completeness against acceptance criteria
+- **Developer** - Plans and implements by itself without delegation
+
+## Specialist Architecture
+
+### Loading Priority
+
+Specialists are loaded from multiple sources with the following priority (highest to lowest):
+
+1. **Database user specialists** (highest priority) - Custom specialists created via the web UI
+2. **File-based user specialists** (`~/.routa/specialists/`) - User's custom specialist definitions
+3. **File-based bundled specialists** (`resources/specialists/`) - Default specialists shipped with Routa
+4. **Hardcoded fallback** (lowest priority) - Built-in fallbacks in the codebase
+
+This priority system allows you to override default specialists with your own custom versions.
+
+### Specialist Configuration
+
+Each specialist is defined by:
+
+```typescript
+interface SpecialistConfig {
+  id: string;                    // Unique identifier
+  name: string;                  // Display name
+  description?: string;          // What this specialist does
+  role: AgentRole;              // ROUTA, CRAFTER, GATE, or DEVELOPER
+  defaultModelTier: ModelTier;  // fast, balanced, or smart
+  systemPrompt: string;         // Detailed behavior instructions
+  roleReminder: string;         // Constraint reminders
+  source?: "user" | "bundled" | "hardcoded";
+  model?: string;               // Optional model override
+  enabled?: boolean;            // Whether this specialist is active
+}
+```
+
+See `src/core/orchestration/specialist-prompts.ts:22` for the full interface definition.
+
+## File Format
+
+Specialists can be defined in Markdown files with YAML frontmatter:
+
+```markdown
+---
+name: "Coordinator"
+description: "Plans work, breaks down tasks, coordinates sub-agents"
+modelTier: "smart"
+role: "ROUTA"
+roleReminder: "You NEVER edit files directly. Delegate ALL implementation to CRAFTER agents."
+---
+
+# System Prompt
+
+You plan, delegate, and verify. You do NOT implement code yourself.
+
+## Hard Rules
+1. NEVER edit code — Delegate implementation to CRAFTER agents
+2. Spec first, always — Create/update the spec BEFORE any delegation
+...
+```
+
+The Markdown content after the frontmatter becomes the specialist's `systemPrompt`.
+
+### Frontmatter Fields
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Display name of the specialist |
+| `description` | Yes | Brief description of the specialist's purpose |
+| `role` | No | Agent role: `ROUTA`, `CRAFTER`, `GATE`, or `DEVELOPER` |
+| `modelTier` | No | Model tier: `fast`, `balanced`, or `smart` (default: `smart`) |
+| `roleReminder` | No | Short reminder of key constraints |
+| `model` | No | Specific model override (e.g., `claude-3-5-haiku-20241022`) |
+
+<Note>
+If `role` is not specified, Routa infers it from the specialist ID:
+- IDs like `routa`, `coordinator`, `spec-writer` → `ROUTA`
+- IDs like `crafter`, `implementor` → `CRAFTER`
+- IDs like `gate`, `verifier` → `GATE`
+- IDs like `developer` → `DEVELOPER`
+</Note>
+
+## Agent Roles
+
+### ROUTA (Coordinator)
+Plans work, breaks down tasks into `@@@task` blocks, and delegates to CRAFTER agents. Never implements code directly.
+
+**Model tier:** `smart` (requires reasoning and planning capabilities)
+
+### CRAFTER (Implementor)
+Executes specific implementation tasks. Follows the task scope strictly, no refactoring or scope creep.
+
+**Model tier:** `fast` (optimized for efficiency)
+
+### GATE (Verifier)
+Verifies implementations against acceptance criteria. Evidence-driven, no partial approvals.
+
+**Model tier:** `smart` (requires careful analysis)
+
+### DEVELOPER
+Combines planning and implementation. Works alone without delegation, suitable for smaller tasks.
+
+**Model tier:** `smart` (handles both planning and implementation)
+
+## Model Tiers
+
+- **fast** - Optimized for speed and cost (e.g., Claude 3.5 Haiku)
+- **balanced** - Balance between capability and cost
+- **smart** - Maximum capability for complex tasks (e.g., Claude 3.5 Sonnet)
+
+See `src/core/models/agent.ts:13` for tier definitions.
+
+## Loading Specialists
+
+### Programmatic Loading
+
+```typescript
+import { loadSpecialists, getSpecialistById } from '@/core/orchestration/specialist-prompts';
+
+// Load all specialists (async)
+const specialists = await loadSpecialists();
+
+// Get a specific specialist by ID
+const routa = getSpecialistById('routa');
+
+// Get a specialist by role
+const coordinator = getSpecialistByRole(AgentRole.ROUTA);
+```
+
+### Cache Management
+
+Specialists are cached after the first load. To reload:
+
+```typescript
+import { reloadSpecialists, invalidateSpecialistCache } from '@/core/orchestration/specialist-prompts';
+
+// Force reload from all sources
+await reloadSpecialists();
+
+// Just clear the cache
+invalidateSpecialistCache();
+```
+
+## File Locations
+
+- **Bundled specialists:** `resources/specialists/` in the project root
+- **User specialists:** `~/.routa/specialists/` in the user's home directory
+- **Core types:** `src/core/orchestration/specialist-prompts.ts`
+- **File loader:** `src/core/specialists/specialist-file-loader.ts`
+- **Database loader:** `src/core/specialists/specialist-db-loader.ts`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Routa Coordinator" icon="diagram-project" href="/specialists/routa-coordinator">
+    Learn about the coordinator specialist
+  </Card>
+  <Card title="Crafter Implementor" icon="code" href="/specialists/crafter-implementor">
+    Learn about the implementor specialist
+  </Card>
+  <Card title="Gate Verifier" icon="shield-check" href="/specialists/gate-verifier">
+    Learn about the verifier specialist
+  </Card>
+  <Card title="Creating Custom Specialists" icon="wand-magic-sparkles" href="/specialists/creating-custom">
+    Build your own specialist
+  </Card>
+</CardGroup>

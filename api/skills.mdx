@@ -1,0 +1,417 @@
+---
+title: Skills Management
+description: Discover, load, and manage reusable agent capabilities
+---
+
+## Overview
+
+Skills are reusable capabilities that can be loaded by agents to perform specific tasks. Skills are defined in Markdown files with metadata and can be discovered from local directories or remote repositories.
+
+## List Skills
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:3000/api/skills
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/skills');
+const data = await response.json();
+console.log(data.skills);
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:3000/api/skills')
+skills = response.json()['skills']
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="GET /api/skills" type="GET">
+  List all available skills or get a specific skill by name
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="name" type="string">
+  If provided, returns a single skill with full content
+</ParamField>
+
+### Response
+
+<ResponseField name="skills" type="array">
+  Array of skill summary objects (when listing)
+</ResponseField>
+
+When querying by name, returns a single skill object with full content.
+
+### Skill Summary Object
+
+<ResponseField name="name" type="string" required>
+  Unique skill identifier
+</ResponseField>
+
+<ResponseField name="description" type="string" required>
+  Detailed description of what the skill does
+</ResponseField>
+
+<ResponseField name="shortDescription" type="string">
+  Brief one-line description
+</ResponseField>
+
+<ResponseField name="license" type="string">
+  License information (e.g., "MIT")
+</ResponseField>
+
+<ResponseField name="compatibility" type="array">
+  Array of compatible agent types or systems
+</ResponseField>
+
+### Full Skill Object
+
+When querying by name, includes all summary fields plus:
+
+<ResponseField name="content" type="string" required>
+  Full skill content (Markdown)
+</ResponseField>
+
+<ResponseField name="metadata" type="object">
+  Additional metadata from the skill definition
+</ResponseField>
+
+### Response Example (List)
+
+```json
+{
+  "skills": [
+    {
+      "name": "git-workflow",
+      "description": "Git branching and commit workflow for collaborative development",
+      "shortDescription": "Git workflow management",
+      "license": "MIT",
+      "compatibility": ["DEVELOPER", "ROUTA"]
+    },
+    {
+      "name": "code-review",
+      "description": "Automated code review and quality checks",
+      "shortDescription": "Code review automation",
+      "license": "Apache-2.0",
+      "compatibility": ["GATE", "DEVELOPER"]
+    }
+  ]
+}
+```
+
+### Response Example (Single Skill)
+
+```json
+{
+  "name": "git-workflow",
+  "description": "Git branching and commit workflow for collaborative development",
+  "content": "# Git Workflow\n\n## Overview\n\nThis skill provides...",
+  "license": "MIT",
+  "compatibility": ["DEVELOPER", "ROUTA"],
+  "metadata": {
+    "version": "1.0.0",
+    "author": "Routa Team"
+  }
+}
+```
+
+## Get Skill by Name
+
+<CodeGroup>
+```bash cURL
+curl "http://localhost:3000/api/skills?name=git-workflow"
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/skills?name=git-workflow');
+const skill = await response.json();
+console.log(skill.content);
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'http://localhost:3000/api/skills',
+    params={'name': 'git-workflow'}
+)
+skill = response.json()
+print(skill['content'])
+```
+</CodeGroup>
+
+### Query Parameters
+
+<ParamField query="name" type="string" required>
+  Skill name to retrieve
+</ParamField>
+
+<ParamField query="repoPath" type="string">
+  Optional repository path to search for skills (in addition to global skills)
+</ParamField>
+
+### Status Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| `200` | Success |
+| `404` | Skill not found |
+
+### Error Response
+
+```json
+{
+  "error": "Skill not found: git-workflow"
+}
+```
+
+## Reload Skills
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/api/skills
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/skills', {
+  method: 'POST'
+});
+const result = await response.json();
+console.log(`Reloaded ${result.count} skills`);
+```
+
+```python Python
+import requests
+
+response = requests.post('http://localhost:3000/api/skills')
+result = response.json()
+print(f"Reloaded {result['count']} skills")
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="POST /api/skills" type="POST">
+  Reload skills from disk and database
+</ParamField>
+
+### Response
+
+<ResponseField name="reloaded" type="boolean" required>
+  Always `true` when successful
+</ResponseField>
+
+<ResponseField name="count" type="integer" required>
+  Number of skills loaded
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "reloaded": true,
+  "count": 15
+}
+```
+
+## Discover Skills
+
+<CodeGroup>
+```bash cURL
+curl "http://localhost:3000/api/skills/clone?repoPath=/path/to/repo"
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/skills/clone?repoPath=/path/to/repo');
+const discovered = await response.json();
+console.log(discovered);
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'http://localhost:3000/api/skills/clone',
+    params={'repoPath': '/path/to/repo'}
+)
+discovered = response.json()
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="GET /api/skills/clone" type="GET">
+  Discover skills from a repository path
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="repoPath" type="string">
+  Path to repository to scan for skills
+</ParamField>
+
+### Response
+
+Returns discovered skill definitions from the specified path.
+
+## Clone Skill Repository
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/api/skills/clone \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://github.com/example/skills-repo.git",
+    "skillsDir": "skills"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/skills/clone', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    url: 'https://github.com/example/skills-repo.git',
+    skillsDir: 'skills'
+  })
+});
+const result = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'http://localhost:3000/api/skills/clone',
+    json={
+        'url': 'https://github.com/example/skills-repo.git',
+        'skillsDir': 'skills'
+    }
+)
+result = response.json()
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="POST /api/skills/clone" type="POST">
+  Clone a skill repository from a Git URL
+</ParamField>
+
+### Request Body
+
+<ParamField body="url" type="string">
+  Git repository URL to clone
+</ParamField>
+
+<ParamField body="skillsDir" type="string">
+  Directory within the repository containing skills
+</ParamField>
+
+### Response
+
+Returns success status and cloned repository information.
+
+## Upload Skill Zip
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/api/skills/upload \
+  -F "file=@skills.zip"
+```
+
+```javascript JavaScript
+const formData = new FormData();
+formData.append('file', fileInput.files[0]);
+
+const response = await fetch('http://localhost:3000/api/skills/upload', {
+  method: 'POST',
+  body: formData
+});
+const result = await response.json();
+```
+
+```python Python
+import requests
+
+with open('skills.zip', 'rb') as f:
+    response = requests.post(
+        'http://localhost:3000/api/skills/upload',
+        files={'file': f}
+    )
+result = response.json()
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="POST /api/skills/upload" type="POST">
+  Upload skill(s) as a zip file
+</ParamField>
+
+### Request Body
+
+Multipart form data with a single file field:
+
+<ParamField body="file" type="binary" required>
+  Zip file containing skill definitions
+</ParamField>
+
+### Response
+
+Returns success status and information about uploaded skills.
+
+## Skill Directory Structure
+
+Skills are discovered from the following locations:
+
+1. **Global Skills**: `~/.config/opencode/skills/`
+2. **Project Skills**: `<project-root>/skills/`
+3. **Database Skills**: Postgres database (for serverless deployments)
+
+### Skill File Format
+
+Skills are Markdown files with YAML front matter:
+
+```markdown
+---
+name: my-skill
+description: A useful skill for agents
+shortDescription: Brief description
+license: MIT
+compatibility:
+  - DEVELOPER
+  - ROUTA
+version: 1.0.0
+---
+
+# Skill Content
+
+Detailed instructions and documentation...
+```
+
+## Serverless Environments
+
+On serverless platforms (Vercel, AWS Lambda), skills are:
+
+1. Stored in the Postgres database
+2. Loaded on-demand from the database
+3. Can be uploaded via the upload endpoint
+
+The filesystem may be read-only or empty in serverless environments.
+
+## Error Responses
+
+### 404 Not Found
+
+```json
+{
+  "error": "Skill not found: git-workflow"
+}
+```

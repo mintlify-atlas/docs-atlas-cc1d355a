@@ -1,0 +1,119 @@
+---
+title: REST API Overview
+description: Introduction to the Routa REST API and getting started guide
+---
+
+## Introduction
+
+The Routa REST API provides programmatic access to manage agents, tasks, workspaces, notes, and skills. The API follows RESTful principles and returns JSON responses.
+
+## Base URLs
+
+Routa has two backend implementations that share the same API contract:
+
+- **Next.js Backend** (Web): `http://localhost:3000` (dev) or your deployment URL
+- **Rust Backend** (Desktop): `http://localhost:3210`
+
+Both backends implement identical endpoints with compatible request/response shapes.
+
+## API Contract
+
+The single source of truth for all API endpoints is defined in `api-contract.yaml` using OpenAPI 3.1 specification. Both the Next.js backend (`src/app/api/`) and Rust backend (`crates/routa-server/`) must implement all endpoints with compatible request/response shapes.
+
+## Authentication
+
+Currently, the API does not require authentication for local development. For production deployments, implement authentication according to your security requirements.
+
+## Request Format
+
+All requests expecting a body should use `Content-Type: application/json`.
+
+```bash
+curl -X POST http://localhost:3000/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Example Task", "objective": "Complete documentation"}'
+```
+
+## Response Format
+
+All responses are returned as JSON with appropriate HTTP status codes:
+
+- `200` - Success
+- `201` - Created
+- `400` - Bad Request (validation error)
+- `404` - Not Found
+- `500` - Internal Server Error
+
+### Success Response
+
+```json
+{
+  "task": {
+    "id": "task-123",
+    "title": "Example Task",
+    "status": "PENDING",
+    "createdAt": "2026-03-03T10:00:00.000Z"
+  }
+}
+```
+
+### Error Response
+
+```json
+{
+  "error": "Validation error: title is required"
+}
+```
+
+## Common Query Parameters
+
+### workspaceId
+
+Many endpoints accept a `workspaceId` query parameter to filter results by workspace. Defaults to `"default"` if not provided.
+
+```bash
+curl "http://localhost:3000/api/tasks?workspaceId=my-workspace"
+```
+
+### status
+
+Filter resources by their status field.
+
+```bash
+curl "http://localhost:3000/api/agents?status=ACTIVE"
+```
+
+## Resource Types
+
+The API manages the following core resources:
+
+- **[Health](/api/health)** - Service health check
+- **[Agents](/api/agents)** - AI agents that execute tasks
+- **[Tasks](/api/tasks)** - Work units assigned to agents
+- **[Notes](/api/notes)** - Collaborative documentation
+- **[Workspaces](/api/workspaces)** - Project containers
+- **[Skills](/api/skills)** - Reusable agent capabilities
+- **[Sessions](/api/sessions)** - ACP session management
+
+## Rate Limiting
+
+No rate limiting is enforced on local development. For production deployments, implement rate limiting according to your requirements.
+
+## Pagination
+
+The current API does not implement pagination. All list endpoints return complete result sets. Consider implementing pagination for production use with large datasets.
+
+## Timestamps
+
+All timestamps are returned in ISO 8601 format (UTC):
+
+```json
+"createdAt": "2026-03-03T10:00:00.000Z"
+```
+
+## Next Steps
+
+- Explore the [Health Check](/api/health) endpoint
+- Learn about [Agent Management](/api/agents)
+- Understand [Task Management](/api/tasks)
+- Review [Workspace Management](/api/workspaces)

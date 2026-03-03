@@ -1,0 +1,585 @@
+---
+title: Task Management
+description: Create and manage tasks that are executed by agents
+---
+
+## Overview
+
+Tasks represent discrete units of work that are assigned to agents. Each task has an objective, acceptance criteria, dependencies, and tracks its completion status.
+
+## Task Status
+
+| Status | Description |
+|--------|-------------|
+| `PENDING` | Task created, waiting to be assigned |
+| `IN_PROGRESS` | Task is being executed by an agent |
+| `REVIEW_REQUIRED` | Task completed, awaiting review |
+| `COMPLETED` | Task successfully completed |
+| `NEEDS_FIX` | Task requires corrections |
+| `BLOCKED` | Task blocked by dependencies or issues |
+| `CANCELLED` | Task was cancelled |
+
+## Verification Verdict
+
+| Verdict | Description |
+|---------|-------------|
+| `APPROVED` | Task verification passed |
+| `NOT_APPROVED` | Task verification failed |
+| `BLOCKED` | Task verification blocked |
+
+## List Tasks
+
+<CodeGroup>
+```bash cURL
+curl "http://localhost:3000/api/tasks?workspaceId=default"
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/tasks?workspaceId=default');
+const data = await response.json();
+console.log(data.tasks);
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'http://localhost:3000/api/tasks',
+    params={'workspaceId': 'default'}
+)
+tasks = response.json()['tasks']
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="GET /api/tasks" type="GET">
+  List tasks with optional filters
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="workspaceId" type="string">
+  Filter by workspace ID (defaults to `"default"`)
+</ParamField>
+
+<ParamField query="status" type="string">
+  Filter by task status
+</ParamField>
+
+<ParamField query="assignedTo" type="string">
+  Filter by assigned agent ID
+</ParamField>
+
+### Response
+
+<ResponseField name="tasks" type="array" required>
+  Array of task objects
+</ResponseField>
+
+### Task Object
+
+<ResponseField name="id" type="string" required>
+  Unique task identifier
+</ResponseField>
+
+<ResponseField name="title" type="string" required>
+  Task title
+</ResponseField>
+
+<ResponseField name="objective" type="string" required>
+  Detailed description of the task objective
+</ResponseField>
+
+<ResponseField name="scope" type="string">
+  Scope definition for the task
+</ResponseField>
+
+<ResponseField name="acceptanceCriteria" type="array">
+  Array of acceptance criteria strings
+</ResponseField>
+
+<ResponseField name="verificationCommands" type="array">
+  Array of commands to verify task completion
+</ResponseField>
+
+<ResponseField name="assignedTo" type="string">
+  ID of the agent assigned to this task
+</ResponseField>
+
+<ResponseField name="status" type="string" required>
+  Current task status
+</ResponseField>
+
+<ResponseField name="dependencies" type="array" required>
+  Array of task IDs that must be completed first
+</ResponseField>
+
+<ResponseField name="parallelGroup" type="string">
+  Group identifier for tasks that can run in parallel
+</ResponseField>
+
+<ResponseField name="workspaceId" type="string" required>
+  Workspace this task belongs to
+</ResponseField>
+
+<ResponseField name="completionSummary" type="string">
+  Summary of task completion
+</ResponseField>
+
+<ResponseField name="verificationVerdict" type="string">
+  Verification result: `APPROVED`, `NOT_APPROVED`, or `BLOCKED`
+</ResponseField>
+
+<ResponseField name="verificationReport" type="string">
+  Detailed verification report
+</ResponseField>
+
+<ResponseField name="createdAt" type="string" required>
+  ISO 8601 timestamp of creation
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string" required>
+  ISO 8601 timestamp of last update
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "tasks": [
+    {
+      "id": "task-xyz789",
+      "title": "Implement user authentication",
+      "objective": "Create a secure authentication system using JWT tokens",
+      "scope": "Backend API endpoints and middleware",
+      "acceptanceCriteria": [
+        "Users can register with email and password",
+        "Users can login and receive JWT token",
+        "Protected routes verify JWT tokens"
+      ],
+      "verificationCommands": [
+        "npm test auth.test.js"
+      ],
+      "assignedTo": "agent-abc123",
+      "status": "IN_PROGRESS",
+      "dependencies": [],
+      "parallelGroup": null,
+      "workspaceId": "default",
+      "completionSummary": null,
+      "verificationVerdict": null,
+      "verificationReport": null,
+      "createdAt": "2026-03-03T10:00:00.000Z",
+      "updatedAt": "2026-03-03T10:30:00.000Z"
+    }
+  ]
+}
+```
+
+## Create Task
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/api/tasks \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Implement user authentication",
+    "objective": "Create a secure authentication system",
+    "workspaceId": "default",
+    "acceptanceCriteria": ["Users can login", "JWT tokens issued"],
+    "dependencies": []
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/tasks', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    title: 'Implement user authentication',
+    objective: 'Create a secure authentication system',
+    workspaceId: 'default',
+    acceptanceCriteria: ['Users can login', 'JWT tokens issued'],
+    dependencies: []
+  })
+});
+const data = await response.json();
+console.log(data.task.id);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'http://localhost:3000/api/tasks',
+    json={
+        'title': 'Implement user authentication',
+        'objective': 'Create a secure authentication system',
+        'workspaceId': 'default',
+        'acceptanceCriteria': ['Users can login', 'JWT tokens issued'],
+        'dependencies': []
+    }
+)
+task = response.json()['task']
+print(task['id'])
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="POST /api/tasks" type="POST">
+  Create a new task
+</ParamField>
+
+### Request Body
+
+<ParamField body="title" type="string" required>
+  Task title
+</ParamField>
+
+<ParamField body="objective" type="string" required>
+  Detailed description of what needs to be accomplished
+</ParamField>
+
+<ParamField body="workspaceId" type="string">
+  Workspace ID (defaults to `"default"`)
+</ParamField>
+
+<ParamField body="scope" type="string">
+  Scope definition for the task
+</ParamField>
+
+<ParamField body="acceptanceCriteria" type="array">
+  Array of acceptance criteria strings
+</ParamField>
+
+<ParamField body="verificationCommands" type="array">
+  Array of shell commands to verify task completion
+</ParamField>
+
+<ParamField body="dependencies" type="array">
+  Array of task IDs that must complete before this task
+</ParamField>
+
+<ParamField body="parallelGroup" type="string">
+  Group identifier for parallel execution
+</ParamField>
+
+### Response
+
+<ResponseField name="task" type="object" required>
+  The created task object
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "task": {
+    "id": "task-xyz789",
+    "title": "Implement user authentication",
+    "objective": "Create a secure authentication system",
+    "scope": null,
+    "acceptanceCriteria": ["Users can login", "JWT tokens issued"],
+    "verificationCommands": [],
+    "assignedTo": null,
+    "status": "PENDING",
+    "dependencies": [],
+    "parallelGroup": null,
+    "workspaceId": "default",
+    "completionSummary": null,
+    "verificationVerdict": null,
+    "verificationReport": null,
+    "createdAt": "2026-03-03T10:00:00.000Z",
+    "updatedAt": "2026-03-03T10:00:00.000Z"
+  }
+}
+```
+
+## Get Task by ID
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:3000/api/tasks/task-xyz789
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/tasks/task-xyz789');
+const data = await response.json();
+console.log(data.task);
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:3000/api/tasks/task-xyz789')
+task = response.json()['task']
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="GET /api/tasks/{id}" type="GET">
+  Get a single task by ID
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The task ID
+</ParamField>
+
+### Response
+
+<ResponseField name="task" type="object" required>
+  The task object
+</ResponseField>
+
+### Status Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| `200` | Success |
+| `404` | Task not found |
+
+## Delete Task
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:3000/api/tasks/task-xyz789
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/tasks/task-xyz789', {
+  method: 'DELETE'
+});
+const result = await response.json();
+console.log(result.deleted); // true
+```
+
+```python Python
+import requests
+
+response = requests.delete('http://localhost:3000/api/tasks/task-xyz789')
+result = response.json()
+print(result['deleted'])  # True
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="DELETE /api/tasks/{id}" type="DELETE">
+  Delete a task
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The task ID to delete
+</ParamField>
+
+### Response
+
+<ResponseField name="deleted" type="boolean" required>
+  Always `true` when successful
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "deleted": true
+}
+```
+
+## Update Task Status
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/api/tasks/task-xyz789/status \
+  -H "Content-Type: application/json" \
+  -d '{"status": "IN_PROGRESS"}'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/tasks/task-xyz789/status', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ status: 'IN_PROGRESS' })
+});
+const result = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'http://localhost:3000/api/tasks/task-xyz789/status',
+    json={'status': 'IN_PROGRESS'}
+)
+result = response.json()
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="POST /api/tasks/{id}/status" type="POST">
+  Update a task's status
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The task ID
+</ParamField>
+
+### Request Body
+
+<ParamField body="status" type="string" required>
+  New status: `PENDING`, `IN_PROGRESS`, `REVIEW_REQUIRED`, `COMPLETED`, `NEEDS_FIX`, `BLOCKED`, or `CANCELLED`
+</ParamField>
+
+### Response
+
+<ResponseField name="updated" type="boolean" required>
+  Always `true` when successful
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "updated": true
+}
+```
+
+## Get Ready Tasks
+
+<CodeGroup>
+```bash cURL
+curl "http://localhost:3000/api/tasks/ready?workspaceId=default"
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/tasks/ready?workspaceId=default');
+const data = await response.json();
+console.log(data.tasks);
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'http://localhost:3000/api/tasks/ready',
+    params={'workspaceId': 'default'}
+)
+tasks = response.json()['tasks']
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="GET /api/tasks/ready" type="GET">
+  Find tasks with all dependencies satisfied and ready for execution
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="workspaceId" type="string">
+  Filter by workspace ID (defaults to `"default"`)
+</ParamField>
+
+### Response
+
+<ResponseField name="tasks" type="array" required>
+  Array of tasks that are ready to be assigned and executed
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "tasks": [
+    {
+      "id": "task-ready-1",
+      "title": "Setup database migrations",
+      "status": "PENDING",
+      "dependencies": [],
+      "workspaceId": "default",
+      "createdAt": "2026-03-03T10:00:00.000Z",
+      "updatedAt": "2026-03-03T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+## Delete All Tasks
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE "http://localhost:3000/api/tasks?workspaceId=default"
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/tasks?workspaceId=default', {
+  method: 'DELETE'
+});
+const result = await response.json();
+console.log(result.deleted); // number of tasks deleted
+```
+
+```python Python
+import requests
+
+response = requests.delete(
+    'http://localhost:3000/api/tasks',
+    params={'workspaceId': 'default'}
+)
+result = response.json()
+print(result['deleted'])
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="DELETE /api/tasks" type="DELETE">
+  Delete all tasks in a workspace
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="workspaceId" type="string">
+  Workspace ID to delete tasks from
+</ParamField>
+
+### Response
+
+<ResponseField name="deleted" type="integer" required>
+  Number of tasks deleted
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "deleted": 5
+}
+```
+
+## Error Responses
+
+### 400 Bad Request
+
+```json
+{
+  "error": "title is required"
+}
+```
+
+### 404 Not Found
+
+```json
+{
+  "error": "Task not found"
+}
+```

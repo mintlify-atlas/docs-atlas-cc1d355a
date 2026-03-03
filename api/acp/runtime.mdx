@@ -1,0 +1,251 @@
+---
+title: "Runtime Management"
+description: "Managing Node.js and Python runtimes for ACP agents"
+icon: "server"
+---
+
+## Overview
+
+Routa's **ACP Runtime Manager** automatically downloads and manages Node.js and Python (uv) runtimes required by ACP agents. This ensures agents can run even when runtimes are not installed on the host system.
+
+## Runtime Types
+
+The runtime manager supports four runtime types:
+
+| Runtime | Description | Default Version |
+|---------|-------------|----------------|
+| `node` | Node.js binary | 22.12.0 |
+| `npx` | Node package executor | (bundled with Node.js) |
+| `uv` | Python package manager | 0.5.11 |
+| `uvx` | Python package executor | (bundled with uv) |
+
+## Platform Support
+
+Runtimes are automatically downloaded for the detected platform:
+
+- `darwin-aarch64` - macOS Apple Silicon
+- `darwin-x86_64` - macOS Intel
+- `linux-aarch64` - Linux ARM64
+- `linux-x86_64` - Linux x86_64
+- `windows-aarch64` - Windows ARM64
+- `windows-x86_64` - Windows x86_64
+
+## Installation Paths
+
+Managed runtimes are stored in:
+
+```
+~/.local/share/acp-agents/.runtimes/     (Linux)
+~/Library/Application Support/acp-agents/.runtimes/  (macOS)
+%LOCALAPPDATA%\acp-agents\.runtimes\     (Windows)
+```
+
+Directory structure:
+
+```
+.runtimes/
+├── node/
+│   └── 22.12.0/
+│       └── node-v22.12.0-darwin-arm64/
+│           ├── bin/
+│           │   ├── node
+│           │   └── npx
+│           └── ...
+└── uv/
+    └── 0.5.11/
+        ├── uv
+        └── uvx
+```
+
+## Runtime Resolution
+
+The runtime manager follows this priority order:
+
+1. **Managed runtime** - Check `~/.local/share/acp-agents/.runtimes/`
+2. **System runtime** - Search system PATH
+3. **Auto-download** - Download and cache if neither is available
+
+## API Reference
+
+### AcpRuntimeManager
+
+#### Getting Started
+
+```typescript
+import { AcpRuntimeManager } from "@/core/acp";
+
+const manager = AcpRuntimeManager.getInstance();
+```
+
+#### Check Runtime Availability
+
+```typescript
+const available = await manager.isRuntimeAvailable("node");
+console.log("Node.js available:", available);
+```
+
+#### Get Runtime Path
+
+```typescript
+const nodePath = await manager.getRuntimePath("node");
+const npxPath = await manager.getRuntimePath("npx");
+
+console.log("Node path:", nodePath);
+console.log("NPX path:", npxPath);
+```
+
+#### Ensure Runtime is Available
+
+Automatically download if not present:
+
+```typescript
+const nodeInfo = await manager.ensureRuntime("node");
+console.log("Node info:", nodeInfo);
+// {
+//   runtime: "node",
+//   path: "/home/user/.local/share/acp-agents/.runtimes/node/22.12.0/...",
+//   version: "22.12.0",
+//   isManaged: true
+// }
+```
+
+#### Get Runtime Version
+
+```typescript
+const version = await manager.getVersion("node");
+console.log("Node version:", version); // "v22.12.0"
+```
+
+#### Get All Runtime Status
+
+```typescript
+const status = await manager.getRuntimeStatus();
+console.log("Platform:", status.platform);
+console.log("Node:", status.runtimes.node);
+console.log("NPX:", status.runtimes.npx);
+console.log("UV:", status.runtimes.uv);
+console.log("UVX:", status.runtimes.uvx);
+```
+
+Example output:
+
+```json
+{
+  "platform": "darwin-aarch64",
+  "runtimes": {
+    "node": {
+      "runtime": "node",
+      "path": "/usr/local/bin/node",
+      "version": "v22.12.0",
+      "isManaged": false
+    },
+    "npx": {
+      "runtime": "npx",
+      "path": "/usr/local/bin/npx",
+      "version": null,
+      "isManaged": false
+    },
+    "uv": null,
+    "uvx": null
+  }
+}
+```
+
+## Download Behavior
+
+### Concurrent Download Protection
+
+The runtime manager uses in-process locking to prevent concurrent downloads of the same runtime:
+
+```typescript
+// Multiple calls will queue, not duplicate
+const [node1, node2] = await Promise.all([
+  manager.ensureRuntime("node"),
+  manager.ensureRuntime("node"),
+]);
+// Only downloads once
+```
+
+### Archive Extraction
+
+Runtimes are downloaded as archives and automatically extracted:
+
+- **Node.js**: `.tar.gz` (Unix) or `.zip` (Windows)
+- **uv**: `.tar.gz` (Unix) or `.zip` (Windows)
+
+Extracted binaries are automatically made executable on Unix systems.
+
+### Cleanup
+
+Download archives are removed after successful extraction to save disk space.
+
+## Usage in ACP Agents
+
+The runtime manager is used internally when spawning ACP agents:
+
+```typescript
+import { getAcpProcessManager } from "@/core/acp";
+
+const manager = getAcpProcessManager();
+
+// Runtime is automatically ensured before spawning
+const process = await manager.create({
+  preset: "opencode",
+  workspaceId: "default",
+  workspacePath: "/path/to/project",
+  sessionId: "session-123",
+});
+```
+
+## Platform Detection
+
+```typescript
+import { currentPlatform } from "@/core/acp/runtime-manager";
+
+const platform = currentPlatform();
+console.log("Current platform:", platform);
+// "darwin-aarch64", "linux-x86_64", etc.
+```
+
+## Error Handling
+
+The runtime manager handles common failure scenarios:
+
+### Download Failures
+
+```typescript
+try {
+  await manager.ensureRuntime("node");
+} catch (error) {
+  console.error("Failed to download Node.js:", error.message);
+}
+```
+
+### Missing Executables
+
+If a runtime download completes but the binary is not found:
+
+```typescript
+// Throws: "'node' not found after downloading node"
+```
+
+### Extraction Failures
+
+If archive extraction fails:
+
+```typescript
+// Throws: "tar extraction failed with code 1"
+```
+
+## Best Practices
+
+1. **Use ensureRuntime() for critical operations** - It handles both detection and installation
+2. **Cache RuntimeInfo results** - Avoid repeated PATH searches
+3. **Check isRuntimeAvailable() before spawning agents** - Validate dependencies early
+4. **Use system runtimes when available** - They're faster to resolve than managed ones
+
+## Related
+
+- [ACP Overview](/api/acp/overview)
+- [Installing Agents](/api/acp/install)
+- [ACP Registry](/api/acp/registry)

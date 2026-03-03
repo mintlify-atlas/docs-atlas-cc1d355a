@@ -1,0 +1,568 @@
+---
+title: Creating Custom Specialists
+description: Define custom agent roles with specialized system prompts, model tiers, and behaviors
+icon: user-gear
+---
+
+## Overview
+
+Routa comes with four built-in specialist roles (Coordinator, Crafter, Gate, Developer), but you can create unlimited custom specialists tailored to your specific workflows.
+
+Custom specialists support:
+- **Custom system prompts** - Define role-specific instructions
+- **Model tier selection** - Choose between smart, fast, or balanced models
+- **Role reminders** - Critical instructions injected into every turn
+- **Behavioral constraints** - Enforce scope, delegation rules, and completion requirements
+
+## Specialist Loading Priority
+
+Routa loads specialists in this order (highest to lowest priority):
+
+1. **Database** - Specialists created via Web UI or REST API
+2. **User files** - Markdown/YAML files in `~/.routa/specialists/`
+3. **Bundled resources** - Files in `resources/specialists/` (shipped with the app)
+4. **Hardcoded fallbacks** - Built into the codebase as last resort
+
+<Note>
+User-defined specialists in the database override bundled specialists with the same `role` identifier.
+</Note>
+
+## Specialist Configuration Formats
+
+Routa supports two formats for specialist definitions:
+
+### Markdown with YAML Frontmatter
+
+Store as `~/.routa/specialists/my-specialist.md`:
+
+```markdown my-specialist.md
+---
+name: "Code Reviewer"
+description: "Reviews code changes for quality, security, and best practices"
+modelTier: "smart"
+role: "CODE_REVIEWER"
+roleReminder: "Always check for security vulnerabilities. Never approve without running tests."
+---
+
+# Code Reviewer Specialist
+
+You are a code reviewer focused on quality, security, and maintainability.
+
+## Hard Rules
+
+1. **Security first** - Flag any potential security issues immediately
+2. **Run tests** - Never approve code without test execution
+3. **Check patterns** - Verify consistency with project conventions
+4. **Document findings** - Write clear, actionable feedback
+
+## Review Process
+
+1. Read the diff/changes
+2. Check for security issues (SQL injection, XSS, auth bypasses)
+3. Run tests: `npm test`
+4. Verify code style matches project patterns
+5. Leave inline comments on specific issues
+6. Provide overall assessment (APPROVE / REQUEST_CHANGES / COMMENT)
+
+## Completion
+
+Call `report_to_parent` with:
+- summary: verdict + key issues or confirmations
+- success: true only if APPROVED
+- taskId: the task ID you were reviewing
+```
+
+### YAML Configuration Only
+
+Store as `~/.routa/specialists/my-specialist.yaml`:
+
+```yaml my-specialist.yaml
+name: "Issue Enricher"
+description: "Adds context and suggestions to GitHub issues"
+modelTier: "fast"
+role: "ISSUE_ENRICHER"
+roleReminder: "Keep suggestions concise. Add labels and assignees."
+systemPrompt: |
+  You are an issue enricher that adds context to GitHub issues.
+
+  Your job:
+  1. Read the issue title and body
+  2. Search codebase for relevant files
+  3. Add context (related code, similar issues)
+  4. Suggest labels (bug, enhancement, etc.)
+  5. Recommend assignees if clear ownership
+  6. Update issue via GitHub API
+
+  Be concise. Link to specific files and line numbers.
+```
+
+## Model Tiers
+
+Specify the model tier for your specialist:
+
+<CodeGroup>
+```yaml Smart (Default)
+modelTier: "smart"
+# Uses: claude-4-sonnet-20250514 or equivalent
+# Best for: planning, complex reasoning, verification
+```
+
+```yaml Fast
+modelTier: "fast"
+# Uses: claude-4-haiku-20250514 or equivalent
+# Best for: simple tasks, data processing, quick responses
+```
+
+```yaml Balanced
+modelTier: "balanced"
+# Uses: claude-4-sonnet-lite or equivalent
+# Best for: moderate complexity, good speed/cost ratio
+```
+</CodeGroup>
+
+Model tiers map to actual models based on environment configuration:
+
+```bash .env
+ANTHROPIC_MODEL=claude-4-sonnet-20250514
+ANTHROPIC_SMALL_FAST_MODEL=claude-4-haiku-20250514
+ANTHROPIC_DEFAULT_SONNET_MODEL=claude-4-sonnet-20250514
+```
+
+## Built-in Specialist Examples
+
+### Coordinator (ROUTA)
+
+The planning and delegation specialist:
+
+```yaml routa.yaml
+name: "Coordinator"
+description: "Plans work, breaks down tasks, coordinates sub-agents"
+modelTier: "smart"
+role: "ROUTA"
+roleReminder: "You NEVER edit files directly. Delegate ALL implementation to CRAFTER agents. Keep the Spec note up to date."
+```
+
+Key behaviors:
+- Creates spec with `@@@task` blocks
+- Delegates waves of tasks to CRAFTER agents
+- Waits for completion before verifying with GATE agents
+- Never implements code directly
+
+See full definition: [resources/specialists/routa.md](https://github.com/routa/routa-js/blob/main/resources/specialists/routa.md)
+
+### Implementor (CRAFTER)
+
+The focused implementation specialist:
+
+```yaml crafter.yaml
+name: "Implementor"
+description: "Executes implementation tasks, writes code"
+modelTier: "smart"
+role: "CRAFTER"
+roleReminder: "Stay within task scope. No refactors, no scope creep. Call report_to_parent when complete."
+```
+
+Key behaviors:
+- Reads task note for scope and definition of done
+- Implements minimal, clean changes
+- Runs verification commands from task
+- Reports back to coordinator
+
+See full definition: [resources/specialists/crafter.md](https://github.com/routa/routa-js/blob/main/resources/specialists/crafter.md)
+
+### Verifier (GATE)
+
+The evidence-driven verification specialist:
+
+```yaml gate.yaml
+name: "Verifier"
+description: "Reviews work and verifies completeness against acceptance criteria"
+modelTier: "smart"
+role: "GATE"
+roleReminder: "Verify against Acceptance Criteria ONLY. Be evidence-driven. Never approve with unknowns."
+```
+
+Key behaviors:
+- Maps work to acceptance criteria
+- Runs verification commands
+- Checks edge cases based on changes
+- Provides structured verdict (APPROVED/NOT APPROVED/BLOCKED)
+
+See full definition: [resources/specialists/gate.md](https://github.com/routa/routa-js/blob/main/resources/specialists/gate.md)
+
+### Solo Developer (DEVELOPER)
+
+The independent planning and implementation specialist:
+
+```yaml developer.yaml
+name: "Developer"
+description: "Plans then implements by itself — no delegation, no sub-agents"
+modelTier: "smart"
+role: "DEVELOPER"
+roleReminder: "You work ALONE — never use delegate_task. Spec first: write the plan, STOP, wait for approval. Self-verify after implementing."
+```
+
+Key behaviors:
+- Writes spec first, waits for approval
+- Implements all tasks independently
+- Self-verifies against acceptance criteria
+- No delegation to other agents
+
+See full definition: [resources/specialists/developer.md](https://github.com/routa/routa-js/blob/main/resources/specialists/developer.md)
+
+## Creating Specialists
+
+### Via Web UI
+
+<Steps>
+  <Step title="Open Specialist Manager">
+    Navigate to Settings → Specialists in the Routa interface.
+  </Step>
+
+  <Step title="Click 'New Specialist'">
+    Fill in the form:
+    - **Name**: Display name (e.g., "Security Auditor")
+    - **Role**: Unique identifier (e.g., "SECURITY_AUDITOR")
+    - **Description**: One-line summary
+    - **Model Tier**: smart/fast/balanced
+    - **Role Reminder**: Critical instructions
+    - **System Prompt**: Full instructions (markdown supported)
+  </Step>
+
+  <Step title="Save">
+    The specialist is immediately available for use in:
+    - Task delegation
+    - Workflow steps
+    - Direct agent spawning
+  </Step>
+</Steps>
+
+### Via REST API
+
+```bash
+curl -X POST http://localhost:3000/api/specialists \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Performance Optimizer",
+    "role": "PERF_OPTIMIZER",
+    "description": "Analyzes and optimizes code performance",
+    "modelTier": "smart",
+    "roleReminder": "Always measure before and after. Use profiling tools.",
+    "systemPrompt": "# Performance Optimizer\n\nYou optimize code for speed and efficiency...\n"
+  }'
+```
+
+List specialists:
+```bash
+curl http://localhost:3000/api/specialists
+```
+
+Update specialist:
+```bash
+curl -X PATCH http://localhost:3000/api/specialists/PERF_OPTIMIZER \
+  -H "Content-Type: application/json" \
+  -d '{"modelTier": "balanced"}'
+```
+
+Delete specialist:
+```bash
+curl -X DELETE http://localhost:3000/api/specialists/PERF_OPTIMIZER
+```
+
+### Via File System
+
+Create `~/.routa/specialists/perf-optimizer.md`:
+
+```markdown
+---
+name: "Performance Optimizer"
+role: "PERF_OPTIMIZER"
+description: "Analyzes and optimizes code performance"
+modelTier: "smart"
+roleReminder: "Always measure before and after. Use profiling tools."
+---
+
+# Performance Optimizer
+
+You are a performance optimization specialist.
+
+## Tools Available
+- Profiling tools (Node.js profiler, Chrome DevTools)
+- Benchmarking libraries (vitest bench, benchmark.js)
+- Bundle analyzers (webpack-bundle-analyzer)
+
+## Process
+1. Profile the current implementation
+2. Identify bottlenecks (CPU, memory, I/O)
+3. Propose optimizations with expected impact
+4. Implement changes
+5. Re-measure and compare results
+6. Document performance improvements
+
+## Guidelines
+- Always measure before optimizing
+- Focus on hot paths (Pareto principle)
+- Consider readability vs. performance tradeoffs
+- Document optimization rationale
+```
+
+Routa automatically detects new files on restart or when scanning for specialists.
+
+## Common Specialist Patterns
+
+### PR Reviewer
+
+```yaml pr-reviewer.yaml
+name: "PR Reviewer"
+role: "PR_REVIEWER"
+description: "Reviews pull requests for quality and style"
+modelTier: "smart"
+roleReminder: "Check tests, docs, and changelog. Leave inline comments."
+systemPrompt: |
+  # PR Reviewer
+
+  Review pull requests systematically:
+
+  1. Read PR description and linked issues
+  2. Review changed files (git diff)
+  3. Check:
+     - Tests added/updated?
+     - Documentation updated?
+     - Changelog entry added?
+     - No breaking changes without migration path?
+  4. Run tests: npm test
+  5. Leave inline comments on specific issues
+  6. Provide summary: APPROVE / REQUEST_CHANGES / COMMENT
+
+  Use GitHub API to post review comments.
+```
+
+### Documentation Writer
+
+```yaml doc-writer.yaml
+name: "Doc Writer"
+role: "DOC_WRITER"
+description: "Writes and maintains documentation"
+modelTier: "smart"
+roleReminder: "Follow docs style guide. Include code examples. Update navigation."
+systemPrompt: |
+  # Documentation Writer
+
+  Write clear, accurate documentation:
+
+  1. Understand the feature/API from code
+  2. Write docs in MDX format
+  3. Include:
+     - Overview paragraph
+     - Step-by-step guides
+     - Code examples (working, tested)
+     - Common troubleshooting
+  4. Update docs.json navigation
+  5. Run docs build: npm run docs:build
+
+  Follow the project's docs style guide.
+```
+
+### Test Generator
+
+```yaml test-gen.yaml
+name: "Test Generator"
+role: "TEST_GEN"
+description: "Generates unit and integration tests"
+modelTier: "smart"
+roleReminder: "Cover happy path, edge cases, and errors. Use project's test framework."
+systemPrompt: |
+  # Test Generator
+
+  Generate comprehensive tests:
+
+  1. Read the implementation code
+  2. Identify test cases:
+     - Happy path (expected inputs)
+     - Edge cases (boundaries, empty, null)
+     - Error cases (invalid inputs, failures)
+  3. Write tests using project's framework (vitest, jest, etc.)
+  4. Ensure tests are independent and deterministic
+  5. Run tests: npm test
+  6. Achieve >80% code coverage
+```
+
+### Bug Fixer
+
+```yaml bug-fixer.yaml
+name: "Bug Fixer"
+role: "BUG_FIXER"
+description: "Investigates and fixes bugs"
+modelTier: "smart"
+roleReminder: "Reproduce first. Add regression test. Fix minimally."
+systemPrompt: |
+  # Bug Fixer
+
+  Fix bugs systematically:
+
+  1. Read bug report (issue, steps to reproduce)
+  2. Reproduce the bug locally
+  3. Investigate root cause (logs, debugger, stack trace)
+  4. Write a failing test that captures the bug
+  5. Implement minimal fix
+  6. Verify test now passes
+  7. Run full test suite
+  8. Update changelog if user-facing
+
+  Do not refactor unrelated code.
+```
+
+## Using Custom Specialists
+
+### In Coordination Workflows
+
+Delegate tasks to your custom specialist:
+
+```typescript
+// From a ROUTA coordinator agent
+await delegate_task_to_agent({
+  taskId: "task-123",
+  specialist: "PERF_OPTIMIZER", // Your custom role
+  waitMode: "after_all"
+});
+```
+
+### In YAML Workflows
+
+Reference custom specialists in workflow steps:
+
+```yaml workflow.yaml
+name: "Performance Audit"
+steps:
+  - name: profile-app
+    specialist: PERF_OPTIMIZER
+    input: "Profile the application and identify bottlenecks"
+    actions:
+      - name: profile
+        params: { duration: 60 }
+
+  - name: optimize
+    specialist: PERF_OPTIMIZER
+    input: "Implement optimizations from profiling results"
+    output_key: optimizations
+
+  - name: verify
+    specialist: GATE
+    input: "Verify performance improvements"
+```
+
+### Direct Agent Spawning
+
+```bash
+# Via CLI
+routa agent create --specialist PERF_OPTIMIZER --prompt "Optimize the API endpoints"
+
+# Via API
+curl -X POST http://localhost:3000/api/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "specialistRole": "PERF_OPTIMIZER",
+    "initialPrompt": "Optimize the API endpoints",
+    "workspaceId": "default"
+  }'
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Define clear scope boundaries">
+    Explicitly state what the specialist should and shouldn't do.
+
+    ```yaml
+    roleReminder: "Only optimize hot paths. Never refactor unrelated code. Always measure before and after."
+    ```
+  </Accordion>
+
+  <Accordion title="Include completion criteria">
+    Tell the specialist how to know when it's done.
+
+    ```markdown
+    ## Completion
+    Call `report_to_parent` when:
+    - All tests pass
+    - Performance improves by >20%
+    - Measurements documented in task note
+    ```
+  </Accordion>
+
+  <Accordion title="Specify verification steps">
+    Provide exact commands to run.
+
+    ```markdown
+    ## Verification
+    - Run benchmarks: `npm run bench`
+    - Compare results: before vs after
+    - Check bundle size: `npm run analyze`
+    ```
+  </Accordion>
+
+  <Accordion title="Use role reminders for critical rules">
+    Role reminders are injected into every turn - use them for non-negotiable requirements.
+
+    ```yaml
+    roleReminder: "NEVER commit secrets or API keys. Always scan with `npm run security-check` before committing."
+    ```
+  </Accordion>
+
+  <Accordion title="Choose the right model tier">
+    - **smart**: Planning, complex analysis, verification
+    - **fast**: Data processing, simple transformations, formatting
+    - **balanced**: Moderate complexity, good default
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Specialist not appearing in UI">
+    1. Check file location: `~/.routa/specialists/`
+    2. Verify YAML frontmatter is valid
+    3. Ensure `role` field is unique
+    4. Restart Routa to reload file-based specialists
+  </Accordion>
+
+  <Accordion title="Specialist using wrong model">
+    Check model tier configuration:
+    ```bash .env
+    ANTHROPIC_MODEL=claude-4-sonnet-20250514
+    ANTHROPIC_SMALL_FAST_MODEL=claude-4-haiku-20250514
+    ```
+    Verify `modelTier` in specialist definition.
+  </Accordion>
+
+  <Accordion title="Role reminder not being followed">
+    - Role reminders are injected every turn but not enforced
+    - Use stronger language ("NEVER", "ALWAYS", "MUST")
+    - Include consequences in the system prompt
+  </Accordion>
+
+  <Accordion title="Database vs file conflicts">
+    Database specialists override file-based ones with the same `role`.
+    To reset to file-based:
+    ```bash
+    curl -X DELETE http://localhost:3000/api/specialists/YOUR_ROLE
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Workflows" icon="sitemap" href="/guides/workflows">
+    Use specialists in automated workflows
+  </Card>
+  <Card title="Custom MCP Servers" icon="plug" href="/guides/custom-mcp-servers">
+    Give specialists access to custom tools
+  </Card>
+  <Card title="Desktop App" icon="desktop" href="/guides/desktop-app">
+    Run specialists in the desktop environment
+  </Card>
+  <Card title="Core Concepts" icon="book" href="/concepts/specialists">
+    Understand specialist architecture
+  </Card>
+</CardGroup>

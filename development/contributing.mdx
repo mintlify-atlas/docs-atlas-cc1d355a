@@ -1,0 +1,366 @@
+---
+title: Contributing Guide
+description: Guidelines for contributing to Routa development
+---
+
+Thank you for your interest in contributing to Routa! This guide covers development practices, commit conventions, and quality standards.
+
+## Getting Started
+
+### Prerequisites
+
+- **Node.js 20+** and npm
+- **Git** for version control
+- **Rust toolchain** (for desktop development)
+- **Tauri prerequisites** (for desktop builds)
+
+### Setup
+
+```bash
+# Clone repository
+git clone https://github.com/your-org/routa.git
+cd routa
+
+# Install dependencies
+npm install --legacy-peer-deps
+
+# Start development server
+npm run dev
+
+# Or start desktop app
+npm run tauri dev
+```
+
+## Development Workflow
+
+### 1. Create a Branch
+
+```bash
+# Create feature branch
+git checkout -b feature/your-feature-name
+
+# Create bugfix branch
+git checkout -b fix/issue-description
+```
+
+### 2. Make Changes
+
+- Write clean, documented code
+- Follow existing code style
+- Add tests for new features
+- Update documentation as needed
+
+### 3. Test Your Changes
+
+```bash
+# Run unit tests
+npm run test:run
+
+# Run E2E tests
+npm run test:e2e
+
+# Lint code
+npm run lint
+
+# Check API parity (if backend changes)
+npm run api:check
+```
+
+### 4. Commit Changes
+
+Follow the Baby-Step Commit principle from AGENTS.md:55-64.
+
+### 5. Create Pull Request
+
+From AGENTS.md:20:
+
+> When plan to create a PR, should attach screenshot with Playwright in GitHub PR body
+
+Include visual evidence of UI changes using Playwright screenshots.
+
+## Commit Guidelines
+
+From AGENTS.md, follow these commit practices:
+
+### Baby-Step Commits
+
+- **Keep commits small** but not excessively granular
+- **One logical change** per commit
+- **Tests pass** before committing
+
+### Commit Message Format
+
+```bash
+# Good commit messages
+git commit -m "Add workspace creation API endpoint"
+git commit -m "Fix task delegation race condition (#123)"
+git commit -m "Update database schema for SQLite support"
+
+# Include issue ID when applicable
+git commit -m "Fix MCP connection timeout (#456)"
+```
+
+### Co-authorship
+
+From AGENTS.md:59-64, append co-author attribution:
+
+```bash
+git commit -m "Implement feature X
+
+Co-authored-by: GitHub Copilot Agent <198982749+copilot@users.noreply.github.com>
+Co-authored-by: Your Name <your.email@example.com>"
+```
+
+Examples of valid co-author formats:
+
+- `Claude <claude@anthropic.com>`
+- `Auggie <auggie@augmentcode.com>`
+- `Kiro <kiro@assistant.ai>`
+- `GitHub Copilot Agent <198982749+copilot@users.noreply.github.com>`
+
+## Issue Management
+
+From AGENTS.md:23-52, Routa uses structured issue files for context handoff.
+
+### When to Create an Issue
+
+- Encountered **unexpected error** during task
+- Observed behavior that **deviates from API contract**
+- Found **potential bug** not blocking current work
+- Need to **hand off investigation** to another developer
+
+### Issue File Format
+
+Create files in `issues/` directory:
+
+```bash
+# File naming: issues/YYYY-MM-DD-short-description.md
+issues/2026-03-03-mcp-connection-timeout.md
+```
+
+Use `issues/_template.md` as base with required front-matter:
+
+```markdown
+---
+title: MCP connection timeout in desktop mode
+date: 2026-03-03
+status: open
+severity: medium
+area: protocols/mcp
+reported_by: developer-name
+---
+
+## What Happened
+
+Objective facts only:
+- Error message
+- Observed behavior
+- Deviation from expected
+
+## Why This Might Happen
+
+Possible causes (use hedging language):
+- Connection pool exhaustion (可能)
+- Network timeout too short (疑似)
+
+## Relevant Files
+
+- src/core/protocols/mcp-server.ts
+- src/app/api/mcp/route.ts
+
+**Do NOT include solutions** — let the resolver form their own judgment.
+```
+
+### Issue Lifecycle
+
+```
+open → investigating → resolved / wontfix
+```
+
+## Code Quality Standards
+
+### TypeScript Guidelines
+
+- **Strict mode** enabled
+- **Type everything** — avoid `any`
+- **Document public APIs** with JSDoc
+- **Prefer interfaces** over types for objects
+
+### React Best Practices
+
+- **Functional components** with hooks
+- **Memoize expensive calculations** with `useMemo`
+- **Extract reusable logic** into custom hooks
+- **Use Server Components** when possible (Next.js)
+
+### Rust Guidelines
+
+- Follow **Rust API guidelines**
+- Use **clippy** for linting
+- Document public APIs with `///` comments
+- Prefer **Result** over panics
+
+## Testing Requirements
+
+### Unit Tests
+
+- Test **business logic** and utilities
+- Mock external dependencies
+- Aim for **>80% coverage** on core modules
+
+### E2E Tests
+
+From AGENTS.md:14:
+
+> Use playwright testing e2e
+
+Add E2E tests for:
+
+- New user-facing features
+- Critical user workflows
+- Cross-browser compatibility
+
+### API Contract Tests
+
+When modifying APIs:
+
+1. Update **both Next.js and Rust** implementations
+2. Run `npm run api:check` to validate parity
+3. Add contract tests in `tests/api-contract/`
+4. Ensure tests pass against both backends
+
+## Pull Request Process
+
+### 1. Pre-submission Checklist
+
+- [ ] Tests pass (`npm run test:run`)
+- [ ] E2E tests pass (`npm run test:e2e`)
+- [ ] Linting passes (`npm run lint`)
+- [ ] API parity verified (`npm run api:check`)
+- [ ] Documentation updated
+- [ ] Commit messages follow guidelines
+- [ ] Co-authors attributed
+
+### 2. PR Description Template
+
+```markdown
+## Summary
+
+Brief description of changes.
+
+## Changes
+
+- Added feature X
+- Fixed bug Y
+- Updated documentation Z
+
+## Testing
+
+- Unit tests: [passing/failing]
+- E2E tests: [passing/failing]
+- Manual testing: [describe what you tested]
+
+## Screenshots
+
+[Attach Playwright screenshots for UI changes]
+
+## Related Issues
+
+Closes #123
+References #456
+```
+
+### 3. Review Process
+
+- Address review comments
+- Keep discussion focused and respectful
+- Update PR based on feedback
+- Resolve merge conflicts
+
+### 4. Merging
+
+- **Squash commits** if many small commits
+- **Rebase** to keep linear history
+- Ensure **CI passes** before merge
+- Delete branch after merge
+
+## Architecture Guidelines
+
+### Dual Backend Parity
+
+When modifying backend logic:
+
+1. Update **Next.js implementation** in `src/app/api/`
+2. Update **Rust implementation** in `crates/routa-server/`
+3. Verify **identical behavior** with contract tests
+4. Document differences (if any) in comments
+
+### Database Migrations
+
+When changing database schema:
+
+1. Update **both schemas**:
+   - `src/core/db/schema.ts` (Postgres)
+   - `src/core/db/sqlite-schema.ts` (SQLite)
+2. Generate migrations:
+   ```bash
+   npm run db:generate
+   npm run db:sqlite:generate
+   ```
+3. Test migrations on both databases
+4. Document breaking changes
+
+### Protocol Extensions
+
+When extending MCP/ACP/A2A protocols:
+
+1. Follow protocol specifications
+2. Update TypeScript types
+3. Update Rust types (if applicable)
+4. Add integration tests
+5. Document new capabilities
+
+## Documentation
+
+### Code Documentation
+
+- Document **why**, not just **what**
+- Use JSDoc for public APIs
+- Include usage examples
+- Link to relevant resources
+
+### User Documentation
+
+When adding features:
+
+- Update relevant docs pages
+- Add examples and code snippets
+- Include screenshots or diagrams
+- Link related documentation
+
+## Community
+
+### Communication
+
+- Be respectful and constructive
+- Ask questions in GitHub Discussions
+- Report bugs in GitHub Issues
+- Share ideas and proposals
+
+### Getting Help
+
+- Check existing documentation
+- Search GitHub Issues
+- Ask in GitHub Discussions
+- Review AGENTS.md for architecture details
+
+## License
+
+By contributing to Routa, you agree that your contributions will be licensed under the MIT License.
+
+## Related Resources
+
+- [Dual Backend Architecture](/development/dual-backend) — Understanding the architecture
+- [Database Configuration](/development/database) — Database setup and migrations
+- [Testing Guide](/development/testing) — Testing strategies and tools
+- [AGENTS.md](https://github.com/your-org/routa/blob/main/AGENTS.md) — Detailed architecture guide

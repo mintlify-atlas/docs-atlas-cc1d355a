@@ -1,0 +1,378 @@
+---
+title: "Installing ACP Agents"
+description: "Installing and managing ACP agents from the registry"
+icon: "download"
+---
+
+## Overview
+
+Routa provides automatic installation of ACP agents from the [ACP Registry](/api/acp/registry). The installer supports three distribution types:
+
+- **NPX** - Node.js packages from npm
+- **UVX** - Python packages from PyPI
+- **Binary** - Platform-specific compiled binaries
+
+## Installation Methods
+
+### Automatic Installation
+
+Routa automatically selects the best distribution type based on availability:
+
+```typescript
+import { installFromRegistry } from "@/core/acp";
+
+const result = await installFromRegistry("example-agent");
+
+if (result.success) {
+  console.log("Installed:", result.agentId);
+  console.log("Distribution:", result.distributionType);
+  console.log("Path:", result.installedPath);
+} else {
+  console.error("Installation failed:", result.error);
+}
+```
+
+### Preferred Distribution Type
+
+Specify a preferred distribution type:
+
+```typescript
+const result = await installFromRegistry("example-agent", "npx");
+// Prefers npx if available, falls back to other types
+```
+
+### Manual Installation
+
+#### NPM Package
+
+```typescript
+import { installNpmPackage } from "@/core/acp";
+
+const result = await installNpmPackage("@acme/ai-agent");
+```
+
+#### Binary Download
+
+```typescript
+import { downloadBinary } from "@/core/acp";
+
+const result = await downloadBinary(
+  "https://example.com/agent-v1.0.0-macos-arm64.tar.gz",
+  "example-agent"
+);
+```
+
+## Distribution Type Selection
+
+The installer selects distributions in this order:
+
+1. **NPX** (if `npx` is available and agent has NPX distribution)
+2. **UVX** (if `uvx` is available and agent has UVX distribution)
+3. **Binary** (if agent has binary for current platform)
+
+### Checking Runtime Availability
+
+```typescript
+import { isNpxAvailable, isUvxAvailable } from "@/core/acp";
+
+const hasNpx = await isNpxAvailable();
+const hasUvx = await isUvxAvailable();
+
+console.log("NPX available:", hasNpx);
+console.log("UVX available:", hasUvx);
+```
+
+## Installation Locations
+
+### NPX Packages
+
+NPX packages are pre-downloaded to the npm cache:
+
+```bash
+~/.npm/_npx/
+```
+
+Routa runs `npx -y <package> --help` to trigger the download.
+
+### UVX Packages
+
+UVX packages are cached by uv:
+
+```bash
+~/.local/share/uv/  # Linux
+~/Library/Caches/uv/  # macOS
+```
+
+### Binary Agents
+
+Binary agents are installed to:
+
+```bash
+~/.routa/acp-agents/<agent-id>/
+```
+
+Example:
+
+```
+~/.routa/acp-agents/
+├── example-agent/
+│   ├── agent          # Executable
+│   └── lib/           # Dependencies
+└── another-agent/
+    └── ...
+```
+
+## Building Agent Commands
+
+After installation, build the command to run the agent:
+
+```typescript
+import { buildAgentCommand } from "@/core/acp";
+
+const command = await buildAgentCommand("example-agent");
+
+if (command) {
+  console.log("Command:", command.command);
+  console.log("Args:", command.args);
+  console.log("Env:", command.env);
+  
+  // Spawn the agent
+  const proc = spawn(command.command, command.args, {
+    env: { ...process.env, ...command.env },
+  });
+}
+```
+
+Example output:
+
+```json
+{
+  "command": "npx",
+  "args": ["@acme/ai-agent", "--acp"],
+  "env": {
+    "AGENT_MODE": "production"
+  }
+}
+```
+
+## Checking Installation Status
+
+### Check if Agent is Available
+
+```typescript
+import { isAgentAvailable } from "@/core/acp";
+
+const available = await isAgentAvailable("example-agent");
+console.log("Agent available:", available);
+```
+
+### List All Agents with Status
+
+```typescript
+import { listAgentsWithStatus } from "@/core/acp";
+
+const agents = await listAgentsWithStatus();
+
+for (const item of agents) {
+  console.log(`${item.agent.name}:`);
+  console.log(`  Installed: ${item.installed}`);
+  console.log(`  Distribution types: ${item.distributionTypes.join(", ")}`);
+  console.log(`  Version: ${item.agent.version}`);
+}
+```
+
+Example output:
+
+```
+OpenCode:
+  Installed: true
+  Distribution types: npx
+  Version: 1.0.0
+
+Gemini CLI:
+  Installed: false
+  Distribution types: npx, binary
+  Version: 0.5.2
+```
+
+## Uninstalling Agents
+
+### Binary Agents
+
+```typescript
+import { uninstallBinaryAgent } from "@/core/acp";
+
+const success = await uninstallBinaryAgent("example-agent");
+console.log("Uninstalled:", success);
+```
+
+### NPX/UVX Packages
+
+NPX and UVX packages are managed by their respective package managers:
+
+```bash
+# NPX packages (remove from cache)
+npm uninstall -g @acme/ai-agent
+
+# UVX packages (remove from cache)
+uv cache clean
+```
+
+## Archive Extraction
+
+The installer automatically extracts archives:
+
+### Supported Formats
+
+- `.tar.gz` / `.tgz` - Gzip-compressed tar
+- `.tar.bz2` / `.tbz2` - Bzip2-compressed tar
+- `.zip` - Zip archive
+
+### Extraction Behavior
+
+```typescript
+// Example: Downloading and extracting a binary
+const result = await downloadBinary(
+  "https://example.com/agent-v1.0.0.tar.gz",
+  "example-agent"
+);
+
+// Archive is automatically:
+// 1. Downloaded to ~/.routa/acp-agents/example-agent/
+// 2. Extracted in place
+// 3. Archive file deleted
+// 4. Executables chmod +x (Unix)
+```
+
+## Platform Detection
+
+```typescript
+import { detectPlatformTarget } from "@/core/acp";
+
+const platform = detectPlatformTarget();
+
+switch (platform) {
+  case "darwin-aarch64":
+    console.log("macOS Apple Silicon");
+    break;
+  case "linux-x86_64":
+    console.log("Linux x86_64");
+    break;
+  // ...
+}
+```
+
+## Complete Installation Example
+
+```typescript
+import { 
+  getRegistryAgent,
+  isAgentAvailable,
+  installFromRegistry,
+  buildAgentCommand,
+} from "@/core/acp";
+import { spawn } from "child_process";
+
+async function installAndRunAgent(agentId: string, message: string) {
+  // 1. Check if agent exists in registry
+  const agent = await getRegistryAgent(agentId);
+  if (!agent) {
+    throw new Error(`Agent ${agentId} not found in registry`);
+  }
+  
+  console.log(`Found: ${agent.name} v${agent.version}`);
+  
+  // 2. Check if already installed
+  if (!(await isAgentAvailable(agentId))) {
+    console.log("Installing agent...");
+    
+    const result = await installFromRegistry(agentId);
+    if (!result.success) {
+      throw new Error(`Installation failed: ${result.error}`);
+    }
+    
+    console.log(`Installed via ${result.distributionType}`);
+  }
+  
+  // 3. Build command
+  const command = await buildAgentCommand(agentId);
+  if (!command) {
+    throw new Error("Failed to build agent command");
+  }
+  
+  // 4. Spawn agent process
+  console.log(`Running: ${command.command} ${command.args.join(" ")}`);
+  
+  const proc = spawn(command.command, command.args, {
+    env: { ...process.env, ...command.env },
+    stdio: "pipe",
+  });
+  
+  // 5. Send message via stdin (JSON-RPC)
+  proc.stdin.write(JSON.stringify({
+    jsonrpc: "2.0",
+    method: "session/prompt",
+    params: { message },
+    id: 1,
+  }));
+  
+  // 6. Handle responses
+  proc.stdout.on("data", (data) => {
+    console.log("Response:", data.toString());
+  });
+  
+  return proc;
+}
+
+// Usage
+installAndRunAgent("opencode", "Fix the login bug");
+```
+
+## Error Handling
+
+### Network Failures
+
+```typescript
+try {
+  await installFromRegistry("example-agent");
+} catch (error) {
+  console.error("Network error:", error.message);
+  // Retry or fall back to cached version
+}
+```
+
+### Platform Not Supported
+
+```typescript
+const result = await installFromRegistry("example-agent", "binary");
+if (!result.success && result.error?.includes("Unsupported platform")) {
+  console.log("This agent doesn't support your platform");
+  console.log("Try NPX or UVX distribution instead");
+}
+```
+
+### Missing Dependencies
+
+```typescript
+if (!(await isNpxAvailable())) {
+  console.warn("NPX not available. Install Node.js to use NPX agents.");
+}
+
+if (!(await isUvxAvailable())) {
+  console.warn("UVX not available. Install uv to use Python agents.");
+}
+```
+
+## Best Practices
+
+1. **Check before installing** - Use `isAgentAvailable()` to avoid redundant installs
+2. **Handle installation failures gracefully** - Network issues are common
+3. **Prefer NPX over binary** - NPX agents are easier to update
+4. **Cache agent commands** - Don't rebuild commands on every spawn
+5. **Clean up old versions** - Remove unused binary agents to save disk space
+
+## Related
+
+- [ACP Registry](/api/acp/registry)
+- [Runtime Management](/api/acp/runtime)
+- [ACP Overview](/api/acp/overview)

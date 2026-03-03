@@ -1,0 +1,418 @@
+---
+title: Web Deployment Guide
+description: Deploy Routa as a web application on Vercel, Railway, or other platforms
+icon: globe
+---
+
+<Note>
+The web version is available **for demo purposes only**. The desktop app is the primary distribution. Use web deployment for testing or team-shared instances.
+</Note>
+
+## Overview
+
+Routa can be deployed as a Next.js web application with:
+- **Database**: PostgreSQL (Neon, Supabase) or SQLite (not recommended for production)
+- **Platforms**: Vercel, Railway, Render, Fly.io
+- **Features**: Full MCP server, ACP agent spawning, A2A federation
+
+## Vercel Deployment
+
+Vercel is the recommended platform for web deployment.
+
+<Steps>
+  <Step title="Create Neon Postgres Database">
+    1. Sign up at [neon.tech](https://neon.tech)
+    2. Create a new project
+    3. Copy the connection string (starts with `postgresql://...`)
+  </Step>
+
+  <Step title="Fork the Repository">
+    Fork [routa-js](https://github.com/routa/routa-js) to your GitHub account.
+  </Step>
+
+  <Step title="Deploy to Vercel">
+    1. Go to [vercel.com](https://vercel.com) and sign in
+    2. Click "New Project"
+    3. Import your forked repository
+    4. Configure environment variables (see below)
+    5. Click "Deploy"
+  </Step>
+
+  <Step title="Configure Environment Variables">
+    Add these in the Vercel dashboard (Settings → Environment Variables):
+
+    ```bash
+    DATABASE_URL=postgresql://user:password@host/database?sslmode=require
+    ANTHROPIC_AUTH_TOKEN=sk-ant-...
+    ROUTA_DB_DRIVER=postgres
+    ```
+  </Step>
+
+  <Step title="Run Database Migrations">
+    After deployment, run migrations via Vercel CLI:
+    ```bash
+    npm install -g vercel
+    vercel login
+    vercel env pull .env.local
+    npm run db:push
+    ```
+  </Step>
+</Steps>
+
+### Environment Variables for Vercel
+
+```bash .env.production
+# Database (required)
+DATABASE_URL=postgresql://user:password@host.neon.tech/routa?sslmode=require
+ROUTA_DB_DRIVER=postgres
+
+# Anthropic API (required for Claude specialists)
+ANTHROPIC_AUTH_TOKEN=sk-ant-...
+
+# Optional: Custom API endpoint
+# ANTHROPIC_BASE_URL=https://api.anthropic.com
+
+# Optional: Model configuration
+# ANTHROPIC_MODEL=claude-4-sonnet-20250514
+# ANTHROPIC_SMALL_FAST_MODEL=claude-4-haiku-20250514
+
+# Optional: Request timeout (milliseconds)
+# API_TIMEOUT_MS=600000
+
+# Optional: GitHub integration
+# GITHUB_TOKEN=ghp_...
+# GITHUB_WEBHOOK_SECRET=your-webhook-secret
+
+# Optional: Disable Claude Code non-essential traffic
+# CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+```
+
+### Vercel Configuration
+
+The project includes `vercel.json` for optimal configuration:
+
+```json vercel.json
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/api/mcp",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    }
+  ]
+}
+```
+
+## Railway Deployment
+
+Railway provides built-in PostgreSQL and simpler configuration.
+
+<Steps>
+  <Step title="Create Railway Account">
+    Sign up at [railway.app](https://railway.app)
+  </Step>
+
+  <Step title="New Project from GitHub">
+    1. Click "New Project"
+    2. Select "Deploy from GitHub repo"
+    3. Choose your forked routa-js repository
+  </Step>
+
+  <Step title="Add PostgreSQL Database">
+    1. Click "New" → "Database" → "Add PostgreSQL"
+    2. Railway automatically sets `DATABASE_URL`
+  </Step>
+
+  <Step title="Configure Environment Variables">
+    In Railway dashboard, add:
+    ```bash
+    ROUTA_DB_DRIVER=postgres
+    ANTHROPIC_AUTH_TOKEN=sk-ant-...
+    ```
+  </Step>
+
+  <Step title="Deploy">
+    Railway automatically builds and deploys on push to main.
+  </Step>
+</Steps>
+
+### Build Configuration for Railway
+
+Create `railway.json`:
+
+```json railway.json
+{
+  "build": {
+    "builder": "NIXPACKS",
+    "buildCommand": "npm install --legacy-peer-deps && npm run build"
+  },
+  "deploy": {
+    "startCommand": "npm start",
+    "healthcheckPath": "/api/health",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 3
+  }
+}
+```
+
+## Render Deployment
+
+<Steps>
+  <Step title="Create Render Account">
+    Sign up at [render.com](https://render.com)
+  </Step>
+
+  <Step title="New Web Service">
+    1. Click "New" → "Web Service"
+    2. Connect your GitHub repository
+    3. Configure as follows:
+  </Step>
+
+  <Step title="Configuration">
+    - **Name**: routa-app
+    - **Environment**: Node
+    - **Build Command**: `npm install --legacy-peer-deps && npm run build`
+    - **Start Command**: `npm start`
+  </Step>
+
+  <Step title="Add PostgreSQL">
+    1. Click "New" → "PostgreSQL"
+    2. Note the Internal Database URL
+    3. Add to web service environment variables
+  </Step>
+
+  <Step title="Environment Variables">
+    ```bash
+    DATABASE_URL=<internal_postgres_url>
+    ROUTA_DB_DRIVER=postgres
+    ANTHROPIC_AUTH_TOKEN=sk-ant-...
+    ```
+  </Step>
+</Steps>
+
+## Self-Hosted (VPS)
+
+Deploy on your own server with PM2.
+
+<Steps>
+  <Step title="Prerequisites">
+    ```bash
+    # Install Node.js 22+
+    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+
+    # Install PM2
+    sudo npm install -g pm2
+    ```
+  </Step>
+
+  <Step title="Clone and Build">
+    ```bash
+    git clone https://github.com/routa/routa-js.git
+    cd routa-js
+    npm install --legacy-peer-deps
+    npm run build
+    ```
+  </Step>
+
+  <Step title="Configure Environment">
+    Create `.env.production`:
+    ```bash
+    DATABASE_URL=postgresql://routa:password@localhost:5432/routa
+    ROUTA_DB_DRIVER=postgres
+    ANTHROPIC_AUTH_TOKEN=sk-ant-...
+    PORT=3000
+    NODE_ENV=production
+    ```
+  </Step>
+
+  <Step title="Start with PM2">
+    ```bash
+    pm2 start npm --name routa -- start
+    pm2 save
+    pm2 startup
+    ```
+  </Step>
+
+  <Step title="Setup Nginx Reverse Proxy">
+    ```nginx /etc/nginx/sites-available/routa
+    server {
+        listen 80;
+        server_name routa.yourdomain.com;
+
+        location / {
+            proxy_pass http://localhost:3000;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_cache_bypass $http_upgrade;
+        }
+
+        location /api/mcp {
+            proxy_pass http://localhost:3000;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+        }
+    }
+    ```
+
+    Enable and restart:
+    ```bash
+    sudo ln -s /etc/nginx/sites-available/routa /etc/nginx/sites-enabled/
+    sudo nginx -t
+    sudo systemctl restart nginx
+    ```
+  </Step>
+</Steps>
+
+## Database Setup
+
+### PostgreSQL (Recommended)
+
+<CodeGroup>
+```bash Neon (Serverless)
+# No setup needed - managed service
+DATABASE_URL=postgresql://user:password@ep-xxx.us-east-2.aws.neon.tech/routa?sslmode=require
+```
+
+```bash Supabase
+# Get connection string from Supabase dashboard → Database → Connection String
+DATABASE_URL=postgresql://postgres:password@db.xxx.supabase.co:5432/postgres
+```
+
+```bash Self-hosted
+# Install PostgreSQL
+sudo apt-get install -y postgresql postgresql-contrib
+
+# Create database and user
+sudo -u postgres psql
+CREATE DATABASE routa;
+CREATE USER routa WITH PASSWORD 'secure_password';
+GRANT ALL PRIVILEGES ON DATABASE routa TO routa;
+\q
+```
+</CodeGroup>
+
+### SQLite (Development Only)
+
+<Warning>
+SQLite is not recommended for production web deployments. Use PostgreSQL instead.
+</Warning>
+
+```bash .env
+ROUTA_DB_DRIVER=sqlite
+ROUTA_DB_PATH=/tmp/routa.db
+```
+
+### Running Migrations
+
+<CodeGroup>
+```bash Development
+npm run db:push
+```
+
+```bash Production (Postgres)
+# Generate migration files
+npm run db:generate
+
+# Apply migrations
+npm run db:migrate
+```
+
+```bash Production (with CI flag)
+npm run db:push:ci
+```
+</CodeGroup>
+
+## Health Checks
+
+Routa exposes a health endpoint at `/api/health`:
+
+```bash
+curl https://your-deployment.vercel.app/api/health
+```
+
+Response:
+```json
+{
+  "status": "ok",
+  "version": "0.2.3",
+  "database": "connected",
+  "timestamp": "2026-03-03T12:00:00.000Z"
+}
+```
+
+## Monitoring
+
+### Vercel Analytics
+
+Enable in Vercel dashboard → Analytics → Enable.
+
+### Custom Logging
+
+Routa logs to stdout. Configure log drains:
+
+**Vercel**: Settings → Integrations → Log Drains
+
+**Railway**: Built-in logs in dashboard
+
+**Self-hosted**: Use PM2 logs:
+```bash
+pm2 logs routa
+pm2 logs routa --lines 100
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Database connection timeout">
+    - Verify `DATABASE_URL` is correct
+    - Check database is accessible from deployment region
+    - For Neon: ensure connection pooling is enabled
+    - Add `?connection_limit=1` to SQLite URLs on serverless
+  </Accordion>
+
+  <Accordion title="Build failures">
+    - Ensure `--legacy-peer-deps` flag is used
+    - Check Node.js version is 22+
+    - Clear build cache and retry
+  </Accordion>
+
+  <Accordion title="MCP connection errors">
+    - Verify WebSocket support is enabled
+    - Check CORS settings allow MCP endpoints
+    - Ensure `/api/mcp` route is not cached
+  </Accordion>
+
+  <Accordion title="Agent spawn failures">
+    - ACP agents (OpenCode, Codex) may not work on serverless (no persistent processes)
+    - Use Claude Code SDK for serverless environments
+    - Consider Docker or VPS deployment for full agent support
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Docker Deployment" icon="docker" href="/guides/docker-deployment">
+    Deploy with Docker for full feature support
+  </Card>
+  <Card title="Custom MCP Servers" icon="plug" href="/guides/custom-mcp-servers">
+    Integrate external tools via MCP
+  </Card>
+  <Card title="Workflows" icon="sitemap" href="/guides/workflows">
+    Automate tasks with YAML workflows
+  </Card>
+  <Card title="GitHub Integration" icon="github" href="/guides/github-virtual-workspace">
+    Connect GitHub repositories
+  </Card>
+</CardGroup>

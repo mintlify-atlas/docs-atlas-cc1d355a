@@ -1,0 +1,362 @@
+---
+title: "A2A Protocol Overview"
+description: "Agent-to-Agent communication protocol in Routa"
+icon: "network-wired"
+---
+
+## What is A2A?
+
+The **Agent-to-Agent (A2A) Protocol** enables Routa to expose its ACP agents as federated, interoperable services that can be discovered and invoked by other AI systems. A2A implements the [A2A SDK v0.3.x specification](https://github.com/a2a-js/sdk) for standardized agent communication.
+
+## Why A2A?
+
+A2A enables:
+
+- **Federation** - Other AI systems can discover and use Routa agents
+- **Interoperability** - Standardized protocol for agent coordination
+- **Service Discovery** - Agent cards expose capabilities and endpoints
+- **Event Streaming** - Real-time updates via Server-Sent Events
+
+## Architecture
+
+Routa's A2A implementation consists of:
+
+### Core Components
+
+- **A2A Session Registry** (`src/core/a2a/a2a-session-registry.ts`) - Tracks active ACP sessions exposed via A2A
+- **A2A Task Bridge** (`src/core/a2a/a2a-task-bridge.ts`) - Maps Routa agents to A2A tasks
+- **A2A Executor** (`src/core/a2a/a2a-executor.ts`) - Placeholder executor (actual impl via JSON-RPC)
+
+### HTTP Endpoints
+
+Routa exposes these A2A endpoints:
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/a2a/card` | GET | Agent card (discovery) |
+| `/api/a2a/rpc` | POST | JSON-RPC endpoint |
+| `/api/a2a/rpc` | GET | SSE event stream |
+| `/api/a2a/sessions` | GET | List active sessions |
+| `/api/a2a/message` | POST | HTTP transport (alternative) |
+| `/api/a2a/tasks` | GET | List A2A tasks |
+| `/api/a2a/tasks/{id}` | GET | Get task by ID |
+
+## Agent Card
+
+Routa exposes a single agent card that represents the entire multi-agent platform:
+
+```json
+{
+  "name": "Routa Multi-Agent Coordinator",
+  "description": "Multi-agent coordination platform that orchestrates AI agents for software development tasks.",
+  "protocolVersion": "0.3.0",
+  "version": "0.2.0",
+  "url": "http://localhost:3000/api/a2a/rpc",
+  "skills": [
+    {
+      "id": "agent-coordination",
+      "name": "Agent Coordination",
+      "description": "Create, delegate tasks to, and coordinate multiple AI agents",
+      "tags": ["coordination", "multi-agent", "orchestration", "planning"],
+      "examples": [
+        "Create a new feature for user authentication",
+        "Fix the bug in the payment processing module"
+      ]
+    },
+    {
+      "id": "software-development",
+      "name": "Software Development",
+      "description": "Implement code changes using specialized CRAFTER agents",
+      "tags": ["coding", "implementation", "development"]
+    },
+    {
+      "id": "code-verification",
+      "name": "Code Verification",
+      "description": "Review and validate code quality using GATE agents",
+      "tags": ["review", "verification", "quality", "testing"]
+    }
+  ],
+  "capabilities": {
+    "streaming": true,
+    "pushNotifications": false
+  }
+}
+```
+
+### Fetching the Agent Card
+
+```bash
+curl http://localhost:3000/api/a2a/card
+```
+
+```typescript
+import { getA2aSessionRegistry } from "@/core/a2a";
+
+const registry = getA2aSessionRegistry();
+const card = registry.generateAgentCard("http://localhost:3000");
+console.log(card);
+```
+
+## A2A Tasks
+
+Routa maps its agents to A2A tasks:
+
+```typescript
+interface A2ATask {
+  id: string;                  // Task ID
+  contextId: string;           // Context/conversation ID
+  status: A2ATaskStatus;
+  history: A2AMessage[];       // Message history
+  artifacts?: A2AArtifact[];   // Output artifacts
+  metadata?: Record<string, unknown>;
+}
+
+interface A2ATaskStatus {
+  state: A2ATaskState;         // submitted, working, completed, etc.
+  timestamp: string;
+  message?: A2AMessage;
+}
+```
+
+### Task States
+
+A2A defines these task states:
+
+| State | Description |
+|-------|-------------|
+| `submitted` | Task created, waiting to start |
+| `working` | Task in progress |
+| `input-required` | Waiting for user input |
+| `completed` | Task finished successfully |
+| `failed` | Task failed with error |
+| `canceled` | Task was canceled |
+| `rejected` | Task was rejected (validation failed) |
+| `auth-required` | Authentication needed |
+
+### Agent Status Mapping
+
+Routa agent statuses map to A2A task states:
+
+| Agent Status | A2A Task State |
+|--------------|----------------|
+| `PENDING` | `submitted` |
+| `ACTIVE` | `working` |
+| `COMPLETED` | `completed` |
+| `ERROR` | `failed` |
+| `CANCELLED` | `canceled` |
+
+## Session Discovery
+
+List active sessions exposed via A2A:
+
+```bash
+curl http://localhost:3000/api/a2a/sessions
+```
+
+Response:
+
+```json
+[
+  {
+    "id": "session-abc123",
+    "agentName": "routa-opencode-abc123",
+    "provider": "opencode",
+    "status": "connected",
+    "capabilities": [
+      "initialize",
+      "method_list",
+      "session/new",
+      "session/prompt",
+      "list_agents",
+      "create_agent",
+      "delegate_task"
+    ],
+    "rpcUrl": "http://localhost:3000/api/a2a/rpc?sessionId=session-abc123",
+    "eventStreamUrl": "http://localhost:3000/api/a2a/rpc?sessionId=session-abc123",
+    "createdAt": "2026-03-03T12:00:00Z"
+  }
+]
+```
+
+## API Reference
+
+### A2aSessionRegistry
+
+```typescript
+import { getA2aSessionRegistry } from "@/core/a2a";
+
+const registry = getA2aSessionRegistry();
+```
+
+#### List Sessions
+
+```typescript
+const sessions = registry.listSessions("http://localhost:3000");
+console.log("Active sessions:", sessions.length);
+```
+
+#### Get Session
+
+```typescript
+const session = registry.getSession("session-abc123", "http://localhost:3000");
+if (session) {
+  console.log("RPC URL:", session.rpcUrl);
+  console.log("Capabilities:", session.capabilities);
+}
+```
+
+#### Generate Agent Card
+
+```typescript
+const card = registry.generateAgentCard("http://localhost:3000");
+console.log("Card:", JSON.stringify(card, null, 2));
+```
+
+### A2ATaskBridge
+
+```typescript
+import { getA2ATaskBridge } from "@/core/a2a";
+
+const bridge = getA2ATaskBridge();
+```
+
+#### Create Task
+
+```typescript
+const task = bridge.createTask({
+  userPrompt: "Implement user authentication",
+  workspaceId: "workspace-123",
+  routaAgentId: "agent-456",
+});
+
+console.log("Task ID:", task.id);
+console.log("Context ID:", task.contextId);
+```
+
+#### Update Task from Agent
+
+```typescript
+import { AgentStatus } from "@/core/models/agent";
+
+const updated = bridge.updateTaskFromAgent(
+  task.id,
+  AgentStatus.COMPLETED,
+  "CRAFTER-001"
+);
+
+console.log("Task state:", updated?.status.state);
+```
+
+#### Register Agent as Task
+
+```typescript
+import { AgentRole, AgentStatus } from "@/core/models/agent";
+
+const task = bridge.registerAgentAsTask({
+  id: "agent-789",
+  name: "CRAFTER-001",
+  role: AgentRole.CRAFTER,
+  status: AgentStatus.ACTIVE,
+  workspaceId: "workspace-123",
+  createdAt: new Date(),
+});
+
+console.log("Registered task:", task.id);
+```
+
+#### List Tasks
+
+```typescript
+const tasks = bridge.listTasks({
+  workspaceId: "workspace-123",
+  state: "working",
+});
+
+console.log("Active tasks:", tasks.length);
+```
+
+#### Cancel Task
+
+```typescript
+try {
+  const canceled = bridge.cancelTask(task.id);
+  console.log("Canceled:", canceled?.id);
+} catch (error) {
+  console.error("Cannot cancel:", error.message);
+}
+```
+
+## Capabilities
+
+Each A2A session exposes these capabilities:
+
+### Base Capabilities
+
+- `initialize` - Initialize the A2A connection
+- `method_list` - List available JSON-RPC methods
+
+### ACP Session Methods
+
+- `session/new` - Create a new ACP session
+- `session/prompt` - Send a message to a session
+- `session/cancel` - Cancel a running session
+- `session/load` - Load a persisted session
+
+### Routa Coordination Tools
+
+- `list_agents` - List agents in a workspace
+- `create_agent` - Create a new agent (CRAFTER, GATE, DEVELOPER)
+- `delegate_task` - Delegate a task to an agent
+- `message_agent` - Send a message to an agent
+
+## Protocol Version
+
+Routa implements **A2A Protocol v0.3.0**.
+
+Key features:
+- JSON-RPC 2.0 transport
+- SSE event streaming
+- Task lifecycle management
+- Agent card discovery
+- Skill-based routing
+
+## Integration Example
+
+```typescript
+import { getA2aSessionRegistry, getA2ATaskBridge } from "@/core/a2a";
+import { createAgent } from "@/core/db/agent-store";
+import { AgentRole, AgentStatus } from "@/core/models/agent";
+
+// 1. Create a Routa agent
+const agent = await createAgent({
+  name: "CRAFTER-001",
+  role: AgentRole.CRAFTER,
+  workspaceId: "workspace-123",
+  modelTier: "BALANCED",
+});
+
+// 2. Register it as an A2A task
+const bridge = getA2ATaskBridge();
+const task = bridge.registerAgentAsTask({
+  id: agent.id,
+  name: agent.name,
+  role: agent.role,
+  status: agent.status,
+  workspaceId: agent.workspaceId,
+  createdAt: agent.createdAt,
+});
+
+console.log("A2A task ID:", task.id);
+
+// 3. Expose via A2A session registry
+const registry = getA2aSessionRegistry();
+const sessions = registry.listSessions("http://localhost:3000");
+
+console.log("Sessions:", sessions.length);
+```
+
+## Related
+
+- [Session Management](/api/a2a/sessions)
+- [Agent Card Endpoint](/api/a2a/card)
+- [RPC Execution](/api/a2a/rpc)

@@ -1,0 +1,549 @@
+---
+title: "RPC Execution"
+description: "Executing JSON-RPC methods via A2A protocol"
+icon: "code"
+---
+
+## Overview
+
+Routa exposes its ACP agents through a **JSON-RPC 2.0** endpoint that implements the A2A protocol. This endpoint provides both request/response and event streaming capabilities.
+
+## Endpoints
+
+### JSON-RPC Request/Response
+
+```
+POST /api/a2a/rpc
+```
+
+### Server-Sent Events (SSE)
+
+```
+GET /api/a2a/rpc?sessionId=<id>
+```
+
+## JSON-RPC Format
+
+All requests follow JSON-RPC 2.0:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "<method_name>",
+  "params": { ... },
+  "id": 1
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": { ... },
+  "id": 1
+}
+```
+
+Error:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32600,
+    "message": "Invalid request"
+  },
+  "id": 1
+}
+```
+
+## Supported Methods
+
+Routa implements these JSON-RPC methods:
+
+### Base Methods
+
+#### `initialize`
+
+Initialize the A2A connection.
+
+```bash
+curl -X POST http://localhost:3000/api/a2a/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "initialize",
+    "params": {
+      "clientInfo": {
+        "name": "My AI System",
+        "version": "1.0.0"
+      }
+    },
+    "id": 1
+  }'
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "protocolVersion": "0.3.0",
+    "serverInfo": {
+      "name": "Routa",
+      "version": "0.2.0"
+    },
+    "capabilities": {
+      "streaming": true
+    }
+  },
+  "id": 1
+}
+```
+
+#### `method_list`
+
+List available JSON-RPC methods.
+
+```bash
+curl -X POST http://localhost:3000/api/a2a/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "method_list",
+    "params": {},
+    "id": 1
+  }'
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "methods": [
+      "initialize",
+      "method_list",
+      "session/new",
+      "session/prompt",
+      "session/cancel",
+      "session/load",
+      "list_agents",
+      "create_agent",
+      "delegate_task",
+      "message_agent"
+    ]
+  },
+  "id": 1
+}
+```
+
+### ACP Session Methods
+
+#### `session/new`
+
+Create a new ACP session.
+
+```bash
+curl -X POST http://localhost:3000/api/a2a/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "session/new",
+    "params": {
+      "provider": "opencode",
+      "workspaceId": "default",
+      "workspacePath": "/path/to/project",
+      "message": "Implement user authentication"
+    },
+    "id": 1
+  }'
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "sessionId": "session-abc123",
+    "status": "active",
+    "eventStreamUrl": "http://localhost:3000/api/a2a/rpc?sessionId=session-abc123"
+  },
+  "id": 1
+}
+```
+
+#### `session/prompt`
+
+Send a message to an existing session.
+
+```bash
+curl -X POST http://localhost:3000/api/a2a/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "session/prompt",
+    "params": {
+      "sessionId": "session-abc123",
+      "message": "Add password reset functionality"
+    },
+    "id": 2
+  }'
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "accepted": true,
+    "messageId": "msg-456"
+  },
+  "id": 2
+}
+```
+
+#### `session/cancel`
+
+Cancel a running session.
+
+```bash
+curl -X POST http://localhost:3000/api/a2a/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "session/cancel",
+    "params": {
+      "sessionId": "session-abc123"
+    },
+    "id": 3
+  }'
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "canceled": true
+  },
+  "id": 3
+}
+```
+
+#### `session/load`
+
+Load a persisted session.
+
+```bash
+curl -X POST http://localhost:3000/api/a2a/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "session/load",
+    "params": {
+      "sessionId": "session-abc123"
+    },
+    "id": 4
+  }'
+```
+
+### Routa Coordination Methods
+
+#### `list_agents`
+
+List agents in a workspace.
+
+```bash
+curl -X POST http://localhost:3000/api/a2a/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "list_agents",
+    "params": {
+      "workspaceId": "default"
+    },
+    "id": 1
+  }'
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "agents": [
+      {
+        "id": "agent-123",
+        "name": "CRAFTER-001",
+        "role": "CRAFTER",
+        "status": "ACTIVE"
+      },
+      {
+        "id": "agent-456",
+        "name": "GATE-001",
+        "role": "GATE",
+        "status": "COMPLETED"
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+#### `create_agent`
+
+Create a new agent.
+
+```bash
+curl -X POST http://localhost:3000/api/a2a/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "create_agent",
+    "params": {
+      "workspaceId": "default",
+      "name": "CRAFTER-002",
+      "role": "CRAFTER",
+      "modelTier": "BALANCED"
+    },
+    "id": 2
+  }'
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "agentId": "agent-789",
+    "name": "CRAFTER-002",
+    "status": "PENDING"
+  },
+  "id": 2
+}
+```
+
+#### `delegate_task`
+
+Delegate a task to an agent.
+
+```bash
+curl -X POST http://localhost:3000/api/a2a/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "delegate_task",
+    "params": {
+      "agentId": "agent-789",
+      "task": {
+        "title": "Implement login API",
+        "objective": "Create REST endpoint for user authentication",
+        "acceptanceCriteria": [
+          "Endpoint accepts username and password",
+          "Returns JWT token on success"
+        ]
+      }
+    },
+    "id": 3
+  }'
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "taskId": "task-101",
+    "accepted": true,
+    "status": "IN_PROGRESS"
+  },
+  "id": 3
+}
+```
+
+#### `message_agent`
+
+Send a message to an agent.
+
+```bash
+curl -X POST http://localhost:3000/api/a2a/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "message_agent",
+    "params": {
+      "agentId": "agent-789",
+      "message": "Use bcrypt for password hashing"
+    },
+    "id": 4
+  }'
+```
+
+## Event Streaming (SSE)
+
+Subscribe to real-time updates from a session:
+
+```bash
+curl -N http://localhost:3000/api/a2a/rpc?sessionId=session-abc123
+```
+
+SSE events:
+
+```
+event: tool_call
+data: {"toolCallId":"call-1","kind":"bash","status":"running"}
+
+event: tool_call_update
+data: {"toolCallId":"call-1","status":"completed","output":"..."}
+
+event: agent_message
+data: {"role":"assistant","content":"I've implemented the login endpoint."}
+
+event: session_complete
+data: {"sessionId":"session-abc123","status":"completed"}
+```
+
+### TypeScript SSE Client
+
+```typescript
+const eventSource = new EventSource(
+  "http://localhost:3000/api/a2a/rpc?sessionId=session-abc123"
+);
+
+eventSource.addEventListener("tool_call", (event) => {
+  const data = JSON.parse(event.data);
+  console.log("Tool call:", data.kind);
+});
+
+eventSource.addEventListener("agent_message", (event) => {
+  const data = JSON.parse(event.data);
+  console.log("Message:", data.content);
+});
+
+eventSource.addEventListener("session_complete", () => {
+  console.log("Session completed");
+  eventSource.close();
+});
+```
+
+## Error Codes
+
+Routa uses standard JSON-RPC error codes:
+
+| Code | Message | Description |
+|------|---------|-------------|
+| -32700 | Parse error | Invalid JSON |
+| -32600 | Invalid request | Malformed JSON-RPC request |
+| -32601 | Method not found | Unknown method |
+| -32602 | Invalid params | Missing or invalid parameters |
+| -32603 | Internal error | Server-side error |
+
+Custom error codes:
+
+| Code | Message | Description |
+|------|---------|-------------|
+| -32000 | Session not found | Invalid session ID |
+| -32001 | Agent not found | Invalid agent ID |
+| -32002 | Task not found | Invalid task ID |
+| -32003 | Workspace not found | Invalid workspace ID |
+
+## Complete Example: Session Workflow
+
+```typescript
+import { EventSource } from "eventsource";
+
+class RoutaClient {
+  constructor(private baseUrl: string) {}
+  
+  async rpc(method: string, params: any): Promise<any> {
+    const response = await fetch(`${this.baseUrl}/api/a2a/rpc`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method,
+        params,
+        id: Date.now(),
+      }),
+    });
+    
+    const result = await response.json();
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+    return result.result;
+  }
+  
+  streamSession(sessionId: string, onEvent: (event: any) => void) {
+    const url = `${this.baseUrl}/api/a2a/rpc?sessionId=${sessionId}`;
+    const es = new EventSource(url);
+    
+    es.onmessage = (event) => {
+      onEvent({ type: event.type, data: JSON.parse(event.data) });
+    };
+    
+    return es;
+  }
+}
+
+// Usage
+const client = new RoutaClient("http://localhost:3000");
+
+// 1. Initialize
+await client.rpc("initialize", {
+  clientInfo: { name: "My AI", version: "1.0.0" },
+});
+
+// 2. Create session
+const { sessionId } = await client.rpc("session/new", {
+  provider: "opencode",
+  workspaceId: "default",
+  message: "Implement user authentication",
+});
+
+console.log("Session:", sessionId);
+
+// 3. Stream events
+const stream = client.streamSession(sessionId, (event) => {
+  console.log(event.type, event.data);
+});
+
+// 4. Send follow-up message
+setTimeout(async () => {
+  await client.rpc("session/prompt", {
+    sessionId,
+    message: "Add password reset functionality",
+  });
+}, 5000);
+
+// 5. Clean up
+process.on("SIGINT", () => {
+  stream.close();
+  process.exit();
+});
+```
+
+## Best Practices
+
+1. **Always provide a request ID** - Helps with debugging
+2. **Use SSE for long-running tasks** - Don't poll
+3. **Handle connection errors** - SSE can disconnect
+4. **Validate responses** - Check for `error` field
+5. **Close SSE connections** - Prevent resource leaks
+6. **Rate limit requests** - Don't overwhelm the server
+
+## Related
+
+- [A2A Overview](/api/a2a/overview)
+- [Session Management](/api/a2a/sessions)
+- [Agent Card Endpoint](/api/a2a/card)

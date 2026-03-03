@@ -1,0 +1,164 @@
+---
+title: CLI Overview
+description: Command-line interface for Routa multi-agent coordination
+---
+
+## Introduction
+
+The **Routa CLI** provides a command-line interface for managing multi-agent coordination workflows. Built with Rust, it reuses the same core domain logic (`routa-core`) and server bootstrap (`routa-server`) that power the Next.js web UI and Tauri desktop application.
+
+## Installation
+
+The CLI is included in the Routa desktop distribution. After installing Routa, the `routa` command is available in your terminal.
+
+## Quick Start
+
+### Prompt Mode
+
+Run the full Routa coordinator flow with a single command:
+
+```bash
+routa -p "Add a login page with OAuth support"
+```
+
+With custom workspace and provider:
+
+```bash
+routa -p "Implement feature X" --workspace-id my-project --provider opencode
+```
+
+### Server Mode
+
+Start the Routa HTTP backend server:
+
+```bash
+routa server --host 127.0.0.1 --port 3210
+```
+
+With static frontend directory:
+
+```bash
+routa server --port 3210 --static-dir ./dist
+```
+
+## Global Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--db <PATH>` | Path to SQLite database file | `routa.db` |
+| `-p, --prompt <TEXT>` | Quick prompt mode (run full coordinator flow) | - |
+| `--workspace-id <ID>` | Workspace ID (used with `-p`) | `default` |
+| `--provider <NAME>` | ACP provider for agent sessions | `opencode` |
+
+The `--db` option can also be set via the `ROUTA_DB_PATH` environment variable.
+
+## Command Structure
+
+Routa CLI commands are organized into several groups:
+
+### Core Commands
+
+- **[agent](/cli/agent)** - Manage agents (list, create, status)
+- **[task](/cli/task)** - Manage tasks (list, create, update)
+- **[chat](/cli/chat)** - Interactive chat session with agents
+- **[server](/cli/server)** - Start the HTTP backend server
+
+### ACP Management
+
+- **acp serve** - Run Routa as an ACP server over stdio
+- **acp install** - Install an ACP agent from registry
+- **acp uninstall** - Remove an installed agent
+- **acp list** - List agents from the ACP registry
+- **acp installed** - List locally-installed agents
+- **acp runtime-status** - Show Node.js/uv runtime status
+
+### Additional Commands
+
+- **workspace** - Manage workspaces (list, create)
+- **skill** - Manage skills (list, reload)
+- **workflow** - Run YAML-defined agent workflows
+- **delegate** - Delegate a task to a specialist agent
+- **rpc** - Send raw JSON-RPC requests
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ROUTA_DB_PATH` | Path to SQLite database | `routa.db` |
+| `RUST_LOG` | Logging level (trace, debug, info, warn, error) | `info` |
+
+## Logging
+
+Configure logging with the `RUST_LOG` environment variable:
+
+```bash
+# Default: routa_core=warn,routa_server=warn,routa_cli=info
+ROUTA_LOG=debug routa agent list
+
+# Enable all debug logging
+RUST_LOG=debug routa -p "Build feature"
+```
+
+## Examples
+
+### List all agents in workspace
+
+```bash
+routa agent list --workspace-id default
+```
+
+### Create a new task
+
+```bash
+routa task create \
+  --title "Add authentication" \
+  --objective "Implement OAuth 2.0 login" \
+  --workspace-id default
+```
+
+### Interactive chat with DEVELOPER agent
+
+```bash
+routa chat --workspace-id default --provider opencode --role DEVELOPER
+```
+
+### Start server with custom database
+
+```bash
+routa --db ./myproject.db server --port 8080
+```
+
+### Install an ACP agent
+
+```bash
+routa acp install opencode
+```
+
+## Output Format
+
+Most commands output JSON for easy parsing and integration with other tools:
+
+```bash
+# Pretty-printed JSON output
+routa agent list --workspace-id default
+
+# Parse with jq
+routa agent list --workspace-id default | jq '.result.agents[0].id'
+```
+
+## Architecture
+
+The CLI architecture mirrors the web application:
+
+- **routa-core** - Domain logic (agents, tasks, orchestration)
+- **routa-server** - HTTP server and API routes
+- **routa-cli** - Command-line interface layer
+
+All three share the same database schema and business logic, ensuring consistency across interfaces.
+
+## Next Steps
+
+- Learn about [Agent commands](/cli/agent)
+- Explore [Task management](/cli/task)
+- Try [Interactive chat](/cli/chat)
+- Configure [Server mode](/cli/server)

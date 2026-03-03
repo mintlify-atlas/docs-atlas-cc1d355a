@@ -1,0 +1,418 @@
+---
+title: Gate Verifier
+description: The verification and quality assurance specialist
+icon: shield-check
+---
+
+## Overview
+
+The **Gate** (Verifier) specialist reviews implementations against the spec's Acceptance Criteria. It is evidence-driven and never approves work without concrete proof.
+
+**Key principle:** No evidence, no verification.
+
+## Configuration
+
+```yaml
+id: gate
+name: Verifier
+role: GATE
+defaultModelTier: smart
+source: bundled
+```
+
+See `resources/specialists/gate.md` and `resources/specialists/gate.yaml` for the full definition.
+
+<Note>
+Gate uses the `smart` model tier because verification requires careful analysis and reasoning.
+</Note>
+
+## Hard Rules
+
+<Warning>
+These rules ensure rigorous, evidence-based verification:
+
+0. **Name yourself first** - Call `set_agent_name` with a short task-focused name (1-5 words) in your first response
+1. **Acceptance Criteria is the checklist** - Do not verify against vibes, intent, or extra requirements
+2. **No evidence, no verification** - If you can't cite evidence, mark ⚠️ or ❌
+3. **No partial approvals** - "APPROVED" only if every criterion is ✅ VERIFIED, or deviations are explicitly accepted
+4. **If you can't run tests, say so** - Compensate with stronger static evidence and label confidence
+5. **Don't expand scope** - You can suggest follow-ups, but they can't block approval unless they're part of Acceptance Criteria
+</Warning>
+
+From `resources/specialists/gate.md:19`.
+
+## Available Tools
+
+| Tool | Purpose |
+|------|----------|
+| `read_note("spec")` | Read the spec note |
+| `list_notes` | List all notes |
+| `read_note(noteId)` | Read task notes |
+| `list_agents` | See what agents exist |
+| `read_agent_conversation(agentId)` | See what implementors did |
+| `send_message_to_agent(agentId, message)` | Request fixes from implementors |
+
+From `resources/specialists/gate.md:29`.
+
+## Verification Process
+
+Gate follows a strict 4-step verification process:
+
+### 0. Preflight: Are we verifying the right thing?
+
+- Read spec: Goal, Non-goals, Acceptance Criteria, Verification Plan
+- Confirm Acceptance Criteria are **specific and testable**
+- If criteria are ambiguous, mark as **Spec Issue** and ask Coordinator to clarify before approval
+
+### 1. Map work → criteria (traceability)
+
+For each acceptance criterion, identify:
+- Which task note(s) correspond
+- Which commit(s)/diff(s) correspond
+- Which tests/commands correspond
+
+<Note>
+If you can't map a criterion to concrete work, it's probably ❌ MISSING.
+</Note>
+
+### 2. Execute verification
+
+- **Prefer running the Verification Plan commands exactly**
+- If you can't run them, state explicitly why and proceed with static review + reasoning evidence
+
+### 3. Edge-case checks (risk-based)
+
+Pick checks based on what changed:
+
+- **APIs/interfaces changed:** backward compat, input validation, error shapes
+- **UI behavior changed:** empty/loading/error states, keyboard focus, a11y basics
+- **Data models changed:** migrations, nullability, serialization/deserialization, versioning
+- **Concurrency/async involved:** races, retries, idempotency, cancellation
+- **Perf-sensitive paths:** O(n)→O(n²) risks, caching, large inputs
+
+<Warning>
+Document only the relevant edge cases. Don't spam a generic checklist.
+</Warning>
+
+See `resources/specialists/gate.md:44` for the verification process.
+
+## Output Format
+
+Gate must produce a structured verification report:
+
+### Verification Summary
+
+```
+- Verdict: ✅ APPROVED / ❌ NOT APPROVED / ⚠️ BLOCKED (spec ambiguity or missing ability to test)
+- Confidence: High / Medium / Low (Low if you couldn't run tests)
+```
+
+### Acceptance Criteria Checklist
+
+For each criterion, output **exactly one**:
+
+```
+✅ VERIFIED:
+  - Evidence: (commit/task note/file/behavior)
+  - Verification: (test/command run OR static reasoning)
+
+⚠️ DEVIATION:
+  - What differs
+  - Why it matters (impact)
+  - Suggested minimal fix
+  - Re-verify steps (commands)
+
+❌ MISSING:
+  - What is missing
+  - Impact
+  - Smallest task needed to complete
+  - Re-verify steps (commands)
+```
+
+### Evidence Index
+
+```
+- Commits reviewed: abc123, def456
+- Task notes reviewed: task-123, task-124
+- Files/areas reviewed: src/auth/, src/db/schema.ts
+```
+
+### Tests/Commands Run
+
+```
+- `npm run test:api` → PASS
+- `npm run db:migrate` → PASS
+- Could not run: `npm run e2e` (reason: requires running server)
+```
+
+### Risk Notes
+
+```
+- Session token generation uses crypto.randomBytes() but expiration is hardcoded to 24h
+  May want configurable session duration in future
+```
+
+### Recommended Follow-ups (optional)
+
+```
+- Add rate limiting to login endpoint
+- Consider adding password strength validation
+```
+
+See `resources/specialists/gate.md:76` for the output format.
+
+## Example Verification
+
+Here's an example of Gate verifying an authentication implementation:
+
+### Input: Acceptance Criteria from Spec
+
+```markdown
+## Acceptance Criteria
+- [ ] Database schema includes users and sessions tables
+- [ ] Login endpoint accepts email/password, returns session token
+- [ ] Logout endpoint invalidates session
+- [ ] Session validation endpoint returns user data or 401
+- [ ] Passwords are hashed, never stored in plaintext
+- [ ] All API endpoints have error handling
+- [ ] Tests pass for all auth flows
+```
+
+### Gate's Verification Report
+
+```markdown
+## Verification Summary
+- Verdict: ✅ APPROVED
+- Confidence: High
+
+## Acceptance Criteria Checklist
+
+### ✅ VERIFIED: Database schema includes users and sessions tables
+- Evidence: 
+  - Commit abc123: "Add users and sessions schema for authentication"
+  - Files: src/db/schema.ts, src/db/migrations/20240303_auth.sql
+  - Task note task-123: Documents tables added with correct fields
+- Verification: 
+  - Ran `npm run db:migrate` → PASS
+  - Inspected schema.ts - users table has id, email, passwordHash, createdAt
+  - Inspected schema.ts - sessions table has id, userId, token, expiresAt
+  - Ran `npm run db:studio` - confirmed tables exist
+
+### ✅ VERIFIED: Login endpoint accepts email/password, returns session token
+- Evidence:
+  - Commit def456: "Implement login and logout API endpoints"
+  - File: src/app/api/auth/login/route.ts
+  - Task note task-124: Documents endpoint implementation
+- Verification:
+  - Ran `npm run test:api` → test "POST /api/auth/login returns session token" PASS
+  - Reviewed code: Validates email/password, queries database, generates token
+  - Manual curl test:
+    ```bash
+    curl -X POST http://localhost:3000/api/auth/login \
+      -H "Content-Type: application/json" \
+      -d '{"email":"test@example.com","password":"test123"}'
+    # → {"token":"eyJ...","expiresAt":"2024-03-04T..."}
+    ```
+
+### ✅ VERIFIED: Logout endpoint invalidates session
+- Evidence:
+  - Commit def456: "Implement login and logout API endpoints"
+  - File: src/app/api/auth/logout/route.ts
+- Verification:
+  - Ran `npm run test:api` → test "POST /api/auth/logout invalidates session" PASS
+  - Reviewed code: Deletes session record from database
+  - Manual curl test: Session token no longer valid after logout
+
+### ✅ VERIFIED: Session validation endpoint returns user data or 401
+- Evidence:
+  - Commit ghi789: "Add session validation endpoint"
+  - File: src/app/api/auth/session/route.ts
+- Verification:
+  - Ran `npm run test:api` → tests for valid/invalid tokens PASS
+  - Reviewed code: Queries session, checks expiration, returns user or 401
+  - Manual curl test: Valid token returns user, invalid returns 401
+
+### ✅ VERIFIED: Passwords are hashed, never stored in plaintext
+- Evidence:
+  - Commit def456
+  - File: src/lib/auth.ts - hashPassword() function
+  - File: src/app/api/auth/login/route.ts - uses hashPassword before storing
+- Verification:
+  - Reviewed code: Uses bcrypt.hash() with salt rounds = 10
+  - Inspected database via db:studio: passwordHash field contains bcrypt hashes
+  - No plaintext passwords found in any code or database
+
+### ✅ VERIFIED: All API endpoints have error handling
+- Evidence:
+  - All route files in src/app/api/auth/
+- Verification:
+  - Reviewed each endpoint:
+    - login: try/catch, returns 400 for invalid credentials, 500 for server errors
+    - logout: try/catch, returns 401 if no session, 500 for server errors
+    - session: try/catch, returns 401 if invalid/expired, 500 for server errors
+  - Ran `npm run test:api` → error case tests PASS
+
+### ✅ VERIFIED: Tests pass for all auth flows
+- Evidence:
+  - Test files: src/app/api/auth/**/*.test.ts
+- Verification:
+  - Ran `npm run test:api`:
+    ```
+    PASS  src/app/api/auth/login/route.test.ts
+    PASS  src/app/api/auth/logout/route.test.ts
+    PASS  src/app/api/auth/session/route.test.ts
+    
+    Test Suites: 3 passed, 3 total
+    Tests:       15 passed, 15 total
+    ```
+
+## Evidence Index
+- Commits reviewed: abc123, def456, ghi789
+- Task notes reviewed: task-123, task-124, task-125
+- Files/areas reviewed: 
+  - src/db/schema.ts
+  - src/db/migrations/20240303_auth.sql
+  - src/app/api/auth/login/route.ts
+  - src/app/api/auth/logout/route.ts
+  - src/app/api/auth/session/route.ts
+  - src/lib/auth.ts
+  - All test files in src/app/api/auth/
+
+## Tests/Commands Run
+- `npm run db:migrate` → PASS
+- `npm run db:studio` → tables verified
+- `npm run test:api` → 15/15 tests PASS
+- Manual curl tests for login/logout/session → all behave correctly
+
+## Risk Notes
+- Session token expiration is hardcoded to 24 hours
+  - Impact: Low - reasonable default for most applications
+  - Consideration: May want to make this configurable in the future
+
+## Recommended Follow-ups
+(None blocking approval)
+- Consider adding rate limiting to login endpoint to prevent brute force
+- Consider password strength validation (min length, complexity)
+- Consider adding "remember me" functionality for longer sessions
+```
+
+## Requesting Fixes
+
+When issues are found, Gate sends structured fix requests to implementors:
+
+```typescript
+send_message_to_agent(
+  agentId: "crafter-124",
+  message: `
+**Fix Request**
+
+Failing criterion: "Session validation endpoint returns user data or 401"
+
+Evidence / repro:
+- Running \`npm run test:api\` → test "GET /api/auth/session with expired token" FAIL
+- Expected: 401 Unauthorized
+- Actual: 200 OK with stale user data
+
+Minimal required change:
+- Add expiration check in src/app/api/auth/session/route.ts
+- Compare session.expiresAt with current time
+- Return 401 if expired
+
+Files likely involved:
+- src/app/api/auth/session/route.ts
+
+Re-verify with:
+- \`npm run test:api\` → all tests should pass
+- Manual curl test with expired token → should return 401
+
+Notes:
+- The session is being queried but expiration is not checked
+- Session table has expiresAt field, just need to validate it
+  `
+)
+```
+
+See `resources/specialists/gate.md:115` for the fix request format.
+
+## Completion (REQUIRED)
+
+<Warning>
+You MUST call `report_to_parent` when verification is complete.
+</Warning>
+
+```typescript
+report_to_parent({
+  summary: "✅ APPROVED with High confidence. All 7 acceptance criteria verified. Tests pass (15/15). Manual verification successful. Minor note: session expiration is hardcoded to 24h.",
+  success: true,  // Only true if ALL criteria are VERIFIED
+  taskId: "task-verify-auth"
+})
+```
+
+**Summary should include:**
+- Verdict + confidence
+- Tests run (or why not)
+- Top 1-3 issues or confirmations
+- Whether any spec ambiguity blocked approval
+
+**success = true ONLY if ALL criteria are VERIFIED**
+
+From `resources/specialists/gate.md:132`.
+
+## Handling Spec Issues
+
+If Acceptance Criteria are ambiguous or untestable:
+
+```typescript
+report_to_parent({
+  summary: "⚠️ BLOCKED due to spec ambiguity. Acceptance criterion 'API is secure' is too vague to verify. Needs specific security requirements (e.g., rate limiting, HTTPS only, input sanitization).",
+  success: false,
+  taskId: "task-verify-api"
+})
+```
+
+Also message the coordinator:
+
+```typescript
+send_message_to_agent(
+  agentId: "coordinator-123",
+  message: "Verification blocked: Acceptance criterion 'API is secure' is not specific enough. Please update spec with testable security requirements."
+)
+```
+
+## System Prompt Location
+
+The full system prompt is defined in:
+- `resources/specialists/gate.md` (Markdown format)
+- `resources/specialists/gate.yaml` (YAML config)
+- `src/core/orchestration/specialist-prompts.ts:150` (Hardcoded fallback)
+
+## Best Practices
+
+1. **Run the Verification Plan** - Execute commands from the spec exactly
+2. **Be evidence-driven** - Only verify what you can prove with concrete evidence
+3. **Check edge cases** - Test error handling, boundary conditions, invalid inputs
+4. **Document confidence** - Label as Low if you couldn't run tests
+5. **Request fixes properly** - Use structured fix requests with clear repro steps
+
+## Common Mistakes
+
+<Warning>
+Avoid these common verifier mistakes:
+
+- **Approving without evidence** - Must cite commits, files, tests, or behavior
+- **Partial approvals** - All criteria must be verified, not just some
+- **Expanding scope** - Only verify what's in Acceptance Criteria
+- **Vague fix requests** - Must include repro steps and re-verify commands
+- **Not reporting completion** - Must call `report_to_parent`
+</Warning>
+
+## Related Specialists
+
+<CardGroup cols={2}>
+  <Card title="Routa Coordinator" icon="diagram-project" href="/specialists/routa-coordinator">
+    The specialist that delegates verification tasks to Gate
+  </Card>
+  <Card title="Crafter Implementor" icon="code" href="/specialists/crafter-implementor">
+    The specialist whose work Gate verifies
+  </Card>
+</CardGroup>

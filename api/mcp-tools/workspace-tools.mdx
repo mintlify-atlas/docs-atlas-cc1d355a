@@ -1,0 +1,487 @@
+---
+title: Workspace Tools
+description: MCP tools for git operations, workspace management, and specialist discovery
+---
+
+Workspace tools provide git integration and workspace-level operations. They enable agents to commit changes, check repository status, and access workspace metadata.
+
+<Warning>
+  Workspace tools are **only available in full mode**. Essential mode focuses on coordination primitives.
+</Warning>
+
+## Git Operations
+
+### git_status
+
+Get the current git status (staged, unstaged, untracked files, current branch).
+
+<ParamField path="cwd" type="string" optional>
+  Working directory (default: project root)
+</ParamField>
+
+**Returns:**
+```json
+{
+  "branch": "feature/jwt-auth",
+  "staged": [
+    "M src/auth/middleware.ts",
+    "A src/auth/jwt.ts"
+  ],
+  "unstaged": [
+    "M src/routes/auth.ts"
+  ],
+  "untracked": [
+    "src/auth/types.ts"
+  ],
+  "clean": false,
+  "raw": "M  src/auth/middleware.ts\nA  src/auth/jwt.ts\n M src/routes/auth.ts\n?? src/auth/types.ts"
+}
+```
+
+**Usage:**
+```typescript
+// Check what files have changed
+const status = await tools.gitStatus({ cwd });
+
+if (status.unstaged.length > 0) {
+  console.log("Unstaged changes:", status.unstaged);
+}
+```
+
+---
+
+### git_diff
+
+Get git diff output. Optionally scope to staged changes or a specific file.
+
+<ParamField path="cwd" type="string" optional>
+  Working directory
+</ParamField>
+
+<ParamField path="staged" type="boolean" optional default="false">
+  Show only staged changes (`--cached`)
+</ParamField>
+
+<ParamField path="file" type="string" optional>
+  Scope to a specific file path
+</ParamField>
+
+**Returns:**
+```json
+{
+  "stat": " src/auth/middleware.ts | 25 ++++++++++++++++++++-----\n src/auth/jwt.ts        | 45 +++++++++++++++++++++++++++++++++++++++++++++\n 2 files changed, 65 insertions(+), 5 deletions(-)",
+  "diff": "diff --git a/src/auth/middleware.ts b/src/auth/middleware.ts\nindex 1234567..abcdefg 100644\n--- a/src/auth/middleware.ts\n+++ b/src/auth/middleware.ts\n@@ -10,5 +10,8 @@ export function authenticate(req, res, next) {\n+  const token = extractToken(req);\n+  const user = verifyToken(token);\n+  req.user = user;\n   next();\n }",
+  "truncated": false
+}
+```
+
+**Usage:**
+```typescript
+// See what changed in staged files
+const diff = await tools.gitDiff({ staged: true, cwd });
+
+// See changes in a specific file
+const fileDiff = await tools.gitDiff({
+  file: "src/auth/middleware.ts",
+  cwd
+});
+```
+
+<Note>
+  Diff output is truncated at 50KB to prevent huge payloads. Check `truncated: true` if you need to know.
+</Note>
+
+---
+
+### git_commit
+
+Create a git commit with the given message. Optionally stage all changes first.
+
+<ParamField path="message" type="string" required>
+  Commit message
+</ParamField>
+
+<ParamField path="cwd" type="string" optional>
+  Working directory
+</ParamField>
+
+<ParamField path="stageAll" type="boolean" optional default="false">
+  Run `git add -A` before committing
+</ParamField>
+
+**Returns:**
+```json
+{
+  "hash": "a3b7c9d",
+  "message": "feat: implement JWT authentication middleware",
+  "output": "[feature/jwt-auth a3b7c9d] feat: implement JWT authentication middleware\n 2 files changed, 65 insertions(+), 5 deletions(-)",
+  "filesCommitted": [
+    "src/auth/middleware.ts",
+    "src/auth/jwt.ts"
+  ]
+}
+```
+
+**Usage:**
+```typescript
+// Commit staged changes
+const result = await tools.gitCommit({
+  message: "feat: implement JWT authentication middleware",
+  cwd
+});
+
+// Stage all and commit
+const result = await tools.gitCommit({
+  message: "fix: handle missing Authorization header",
+  stageAll: true,
+  cwd
+});
+```
+
+<Warning>
+  If there are no staged changes and `stageAll` is false, this will fail with "Nothing to commit. No staged changes."
+</Warning>
+
+---
+
+## Workspace Management
+
+### get_workspace_info
+
+Get workspace details including agent counts, task status summary, and notes overview.
+
+<ParamField path="workspaceId" type="string" optional>
+  Workspace ID (uses default if omitted)
+</ParamField>
+
+**Returns:**
+```json
+{
+  "workspaceId": "ws-uuid",
+  "agents": {
+    "total": 8,
+    "byRole": {
+      "ROUTA": 1,
+      "CRAFTER": 5,
+      "GATE": 2,
+      "DEVELOPER": 0
+    },
+    "byStatus": {
+      "ACTIVE": 3,
+      "COMPLETED": 4,
+      "PENDING": 1,
+      "ERROR": 0
+    }
+  },
+  "tasks": {
+    "total": 12,
+    "byStatus": {
+      "PENDING": 2,
+      "IN_PROGRESS": 3,
+      "COMPLETED": 6,
+      "NEEDS_FIX": 1,
+      "BLOCKED": 0
+    }
+  },
+  "notes": {
+    "total": 15,
+    "byType": {
+      "spec": 1,
+      "task": 12,
+      "general": 2
+    }
+  }
+}
+```
+
+**Usage:**
+```typescript
+const info = await tools.getWorkspaceInfo({ workspaceId });
+
+console.log(`Progress: ${info.tasks.byStatus.COMPLETED}/${info.tasks.total} tasks done`);
+console.log(`Active agents: ${info.agents.byStatus.ACTIVE}`);
+```
+
+---
+
+### get_workspace_details
+
+Get comprehensive workspace details: metadata, agent counts, task summary, notes overview, and Git branch.
+
+<ParamField path="workspaceId" type="string" optional>
+  Workspace ID (uses default if omitted)
+</ParamField>
+
+**Returns:**
+```json
+{
+  "workspace": {
+    "id": "ws-uuid",
+    "title": "JWT Authentication Implementation",
+    "status": "ACTIVE",
+    "metadata": {},
+    "createdAt": "2024-03-03T09:00:00Z",
+    "updatedAt": "2024-03-03T10:45:00Z"
+  },
+  "agents": {
+    "total": 8,
+    "active": 3,
+    "completed": 4,
+    "byRole": {
+      "ROUTA": 1,
+      "CRAFTER": 5,
+      "GATE": 2,
+      "DEVELOPER": 0
+    }
+  },
+  "tasks": {
+    "total": 12,
+    "pending": 2,
+    "inProgress": 3,
+    "completed": 6,
+    "needsFix": 1
+  },
+  "notes": {
+    "total": 15,
+    "spec": 1,
+    "task": 12,
+    "general": 2
+  }
+}
+```
+
+---
+
+### set_workspace_title
+
+Set or rename the workspace title. Optionally renames the Git branch to match.
+
+<ParamField path="workspaceId" type="string" optional>
+  Workspace ID (uses default if omitted)
+</ParamField>
+
+<ParamField path="title" type="string" required>
+  New workspace title
+</ParamField>
+
+**Returns:**
+```json
+{
+  "workspaceId": "ws-uuid",
+  "title": "JWT Auth with Refresh Tokens",
+  "oldTitle": "JWT Authentication Implementation"
+}
+```
+
+**Usage:**
+```typescript
+await tools.setWorkspaceTitle({
+  workspaceId,
+  title: "JWT Auth with Role-Based Access Control"
+});
+```
+
+---
+
+### list_workspaces
+
+List all workspaces with their id, title, status, and creation date.
+
+**Returns:**
+```json
+[
+  {
+    "id": "ws-uuid-1",
+    "title": "JWT Auth Implementation",
+    "status": "ACTIVE",
+    "createdAt": "2024-03-03T09:00:00Z"
+  },
+  {
+    "id": "ws-uuid-2",
+    "title": "Database Migration",
+    "status": "COMPLETED",
+    "createdAt": "2024-03-02T14:30:00Z"
+  }
+]
+```
+
+---
+
+### create_workspace
+
+Create a new workspace with a title and optional repo path / branch.
+
+<ParamField path="id" type="string" required>
+  Unique workspace ID
+</ParamField>
+
+<ParamField path="title" type="string" required>
+  Workspace title
+</ParamField>
+
+<ParamField path="repoPath" type="string" optional>
+  Local path to Git repository
+</ParamField>
+
+<ParamField path="branch" type="string" optional>
+  Git branch name
+</ParamField>
+
+**Returns:**
+```json
+{
+  "workspaceId": "ws-new-feature",
+  "title": "New Feature Implementation"
+}
+```
+
+---
+
+### list_specialists
+
+List all available specialist configurations (roles, model tiers, descriptions).
+
+**Returns:**
+```json
+[
+  {
+    "id": "routa",
+    "name": "Coordinator",
+    "description": "Plans work, breaks down tasks, coordinates sub-agents",
+    "role": "ROUTA",
+    "modelTier": "SMART",
+    "source": "bundled"
+  },
+  {
+    "id": "crafter",
+    "name": "Implementor",
+    "description": "Executes implementation tasks, writes code",
+    "role": "CRAFTER",
+    "modelTier": "FAST",
+    "source": "bundled"
+  },
+  {
+    "id": "gate",
+    "name": "Verifier",
+    "description": "Reviews work and verifies completeness against acceptance criteria",
+    "role": "GATE",
+    "modelTier": "SMART",
+    "source": "bundled"
+  },
+  {
+    "id": "developer",
+    "name": "Developer",
+    "description": "Plans then implements itself — no delegation, no sub-agents",
+    "role": "DEVELOPER",
+    "modelTier": "SMART",
+    "source": "bundled"
+  },
+  {
+    "id": "custom-researcher",
+    "name": "Research Specialist",
+    "description": "Investigates codebases and documents findings",
+    "role": "DEVELOPER",
+    "modelTier": "SMART",
+    "source": "user"
+  }
+]
+```
+
+**Usage:**
+```typescript
+const specialists = await tools.listSpecialists();
+
+// Find all CRAFTER specialists
+const crafters = specialists.filter(s => s.role === "CRAFTER");
+
+// Find custom user specialists
+const custom = specialists.filter(s => s.source === "user");
+```
+
+<Info>
+  Specialists are loaded from three sources with priority:
+  1. Database user specialists (highest)
+  2. File-based user specialists (`~/.routa/specialists/`)
+  3. Bundled specialists (lowest)
+</Info>
+
+---
+
+## Common Patterns
+
+### Pre-commit Check
+
+```typescript
+// Before committing, check what will be included
+const status = await tools.gitStatus({ cwd });
+
+if (status.unstaged.length > 0) {
+  // Stage specific files
+  await exec("git add src/auth/");
+}
+
+const diff = await tools.gitDiff({ staged: true, cwd });
+console.log("Changes to commit:", diff.stat);
+
+// Commit
+await tools.gitCommit({
+  message: "feat: implement JWT auth",
+  cwd
+});
+```
+
+### Verification Workflow
+
+```typescript
+// GATE agent checking implementation
+const diff = await tools.gitDiff({ cwd });
+
+// Parse diff to find modified files
+const modifiedFiles = extractFiles(diff.diff);
+
+// Verify each file against acceptance criteria
+for (const file of modifiedFiles) {
+  const fileDiff = await tools.gitDiff({ file, cwd });
+  // Check against criteria
+}
+```
+
+### Workspace Overview
+
+```typescript
+// Coordinator checking workspace state
+const details = await tools.getWorkspaceDetails({ workspaceId });
+
+const progress = details.tasks.completed / details.tasks.total;
+console.log(`Workspace: ${details.workspace.title}`);
+console.log(`Progress: ${(progress * 100).toFixed(0)}%`);
+console.log(`Active agents: ${details.agents.active}`);
+
+if (details.tasks.needsFix > 0) {
+  console.log(`⚠️  ${details.tasks.needsFix} tasks need fixes`);
+}
+```
+
+### Custom Specialist Discovery
+
+```typescript
+// List all available specialists
+const specialists = await tools.listSpecialists();
+
+console.log("Available specialists:");
+for (const s of specialists) {
+  console.log(`- ${s.name} (${s.role}) - ${s.description}`);
+}
+
+// Find a specialist by role
+const verifier = specialists.find(s => s.role === "GATE");
+```
+
+---
+
+## See Also
+
+- [Agent Tools](/api/mcp-tools/agent-tools) - Delegation and coordination
+- [Task Tools](/api/mcp-tools/task-tools) - Task lifecycle management
+- [Note Tools](/api/mcp-tools/note-tools) - Spec and collaboration
+- [Custom Specialists](/guides/custom-specialists) - Creating custom specialist configs

@@ -1,0 +1,128 @@
+---
+title: Health Check
+description: Service health check endpoint for monitoring and container health checks
+---
+
+## Overview
+
+The health check endpoint provides a simple way to verify that the Routa service is running and responsive. This is useful for Docker/container health checks, load balancer health monitoring, and uptime monitoring.
+
+## Get Health Status
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:3000/api/health
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/health');
+const health = await response.json();
+console.log(health.status); // "ok"
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:3000/api/health')
+health = response.json()
+print(health['status'])  # "ok"
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="GET /api/health" type="GET">
+  Returns the current service status and timestamp
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="string" required>
+  Service status - always returns `"ok"` when healthy
+</ResponseField>
+
+<ResponseField name="timestamp" type="string" required>
+  Current server timestamp in ISO 8601 format
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-03-03T10:30:45.123Z"
+}
+```
+
+## Status Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| `200` | Service is healthy and responsive |
+| `500` | Service encountered an error (unhealthy) |
+
+## Use Cases
+
+### Docker Health Check
+
+Add to your `Dockerfile`:
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/api/health || exit 1
+```
+
+### Docker Compose
+
+```yaml
+services:
+  routa:
+    image: routa:latest
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+```
+
+### Kubernetes Liveness Probe
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: routa
+spec:
+  containers:
+  - name: routa
+    image: routa:latest
+    livenessProbe:
+      httpGet:
+        path: /api/health
+        port: 3000
+      initialDelaySeconds: 5
+      periodSeconds: 10
+```
+
+### Uptime Monitoring
+
+Use the health endpoint with monitoring services like:
+
+- UptimeRobot
+- Pingdom
+- StatusCake
+- Custom monitoring scripts
+
+## Cache Control
+
+The health endpoint includes `Cache-Control: no-store` headers to ensure fresh status checks are always performed.
+
+## Implementation
+
+The health check is implemented in both backends:
+
+- **Next.js**: `src/app/api/health/route.ts`
+- **Rust**: `crates/routa-server/src/routes/health.rs`
+
+Both return identical response formats.

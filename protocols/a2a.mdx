@@ -1,0 +1,617 @@
+---
+title: 'Agent-to-Agent Protocol (A2A)'
+description: 'Expose Routa agents as A2A-compatible tasks for external federation'
+---
+
+## Overview
+
+The **Agent-to-Agent Protocol (A2A)** is Routa's external federation interface. It exposes internal Routa agents as A2A-compatible tasks, enabling cross-platform agent communication and discovery.
+
+**Key Purpose:** Allow external AI systems to discover, communicate with, and coordinate with Routa agents using a standardized protocol.
+
+**Built on:** [@a2a-js/sdk](https://a2a-js.github.io/sdk/)
+
+## When to Use A2A
+
+Use A2A when you need to:
+- **Expose Routa agents** to external AI platforms
+- **Enable cross-platform coordination** between different AI systems
+- **Implement agent discovery** for external clients
+- **Provide a standardized interface** for agent communication
+- **Integrate with A2A-compatible tools** and platforms
+
+A2A is ideal for **federation scenarios** where multiple AI systems need to collaborate.
+
+## Architecture
+
+A2A implementation bridges Routa's internal agent model to the A2A protocol:
+
+```typescript
+// src/core/a2a/a2a-task-bridge.ts:106
+export class A2ATaskBridge {
+  private tasks = new Map<string, A2ATaskRecord>();
+
+  /**
+   * Create a new A2A task linked to a Routa agent
+   */
+  createTask(params: {
+    userPrompt: string;
+    workspaceId?: string;
+    routaAgentId?: string;
+    contextId?: string;
+  }): A2ATask {
+    const taskId = uuidv4();
+    const task: A2ATaskRecord = {
+      id: taskId,
+      contextId: params.contextId ?? uuidv4(),
+      status: { state: "submitted", timestamp: new Date().toISOString() },
+      history: [userMessage],
+      artifacts: [],
+      _routaAgentId: params.routaAgentId,
+      _workspaceId: params.workspaceId
+    };
+    this.tasks.set(taskId, task);
+    return task;
+  }
+
+  /**
+   * Update task state based on Routa agent status
+   */
+  updateTaskFromAgent(
+    taskId: string,
+    agentStatus: AgentStatus
+  ): A2ATask | undefined {
+    const task = this.tasks.get(taskId);
+    if (!task) return undefined;
+
+    task.status.state = mapAgentStatusToA2AState(agentStatus);
+    task.status.timestamp = new Date().toISOString();
+    return task;
+  }
+}
+```
+
+## Key Concepts
+
+### A2A Task Model
+
+Routa agents are exposed as A2A "tasks" with the following structure:
+
+```typescript
+interface A2ATask {
+  id: string;                    // Unique task identifier
+  contextId: string;             // Conversation context
+  status: A2ATaskStatus;         // Current state and timestamp
+  history: A2AMessage[];         // Message history
+  artifacts?: A2AArtifact[];     // Output artifacts
+  metadata?: Record<string, unknown>;
+}
+
+interface A2ATaskStatus {
+  state: A2ATaskState;
+  timestamp: string;
+  message?: A2AMessage;
+}
+
+type A2ATaskState =
+  | "submitted"      // Task created, not yet started
+  | "working"        // Agent actively processing
+  | "input-required" // Waiting for user input
+  | "completed"      // Successfully finished
+  | "failed"         // Errored or failed
+  | "canceled"       // Manually cancelled
+  | "rejected"       // Rejected by agent
+  | "auth-required"; // Authentication needed
+```
+
+### State Mapping
+
+Routa agent statuses are mapped to A2A task states:
+
+```typescript
+// src/core/a2a/a2a-task-bridge.ts:72
+export function mapAgentStatusToA2AState(status: AgentStatus): A2ATaskState {
+  switch (status) {
+    case AgentStatus.PENDING:
+      return "submitted";
+    case AgentStatus.ACTIVE:
+      return "working";
+    case AgentStatus.COMPLETED:
+      return "completed";
+    case AgentStatus.ERROR:
+      return "failed";
+    case AgentStatus.CANCELLED:
+      return "canceled";
+    default:
+      return "submitted";
+  }
+}
+```
+
+### Role to Skill Mapping
+
+Routa agent roles are exposed as A2A skill identifiers:
+
+```typescript
+// src/core/a2a/a2a-task-bridge.ts:89
+export function mapAgentRoleToSkillId(role: AgentRole): string {
+  switch (role) {
+    case AgentRole.ROUTA:
+      return "coordination";
+    case AgentRole.CRAFTER:
+      return "development";
+    case AgentRole.GATE:
+      return "verification";
+    case AgentRole.DEVELOPER:
+      return "full-stack-development";
+    default:
+      return "coordination";
+  }
+}
+```
+
+## A2A Messages
+
+Messages in A2A tasks represent communication between users and agents:
+
+```typescript
+interface A2AMessage {
+  messageId: string;
+  role: "user" | "agent";
+  parts: A2APart[];
+  contextId?: string;
+  taskId?: string;
+}
+
+interface A2APart {
+  text?: string;              // Plain text content
+  data?: unknown;             // Structured data (JSON)
+  mediaType?: string;         // MIME type (e.g., "application/json")
+}
+```
+
+Example message flow:
+
+```typescript
+// User message
+const userMessage: A2AMessage = {
+  messageId: "msg-1",
+  role: "user",
+  parts: [{ text: "Implement user authentication" }],
+  contextId: "ctx-123",
+  taskId: "task-456"
+};
+
+// Agent response
+const agentMessage: A2AMessage = {
+  messageId: "msg-2",
+  role: "agent",
+  parts: [
+    { text: "I'll implement JWT-based authentication." },
+    {
+      data: { filesModified: ["src/auth/jwt.ts"] },
+      mediaType: "application/json"
+    }
+  ],
+  contextId: "ctx-123",
+  taskId: "task-456"
+};
+```
+
+## A2A Artifacts
+
+Artifacts represent outputs produced by agents:
+
+```typescript
+interface A2AArtifact {
+  artifactId: string;
+  name: string;
+  description?: string;
+  parts: A2APart[];
+}
+```
+
+Example artifact (agent completion report):
+
+```typescript
+const artifact: A2AArtifact = {
+  artifactId: "artifact-1",
+  name: "Implementation Summary",
+  description: "Summary of authentication implementation",
+  parts: [
+    {
+      text: "Implemented JWT authentication with login, logout, and token refresh endpoints."
+    },
+    {
+      data: {
+        filesCreated: ["src/auth/jwt.ts", "src/auth/middleware.ts"],
+        testsAdded: ["src/auth/__tests__/jwt.test.ts"],
+        apiEndpoints: ["/api/login", "/api/logout", "/api/refresh"]
+      },
+      mediaType: "application/json"
+    }
+  ]
+};
+```
+
+## JSON-RPC Interface
+
+A2A communication happens via JSON-RPC over HTTP:
+
+### Create Task
+
+**Method:** `task/create`
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "task/create",
+  "params": {
+    "contextId": "ctx-123",
+    "message": {
+      "parts": [{ "text": "Implement user authentication" }]
+    },
+    "workspaceId": "workspace-456"
+  },
+  "id": 1
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "id": "task-789",
+    "contextId": "ctx-123",
+    "status": {
+      "state": "submitted",
+      "timestamp": "2026-03-03T10:30:00Z"
+    },
+    "history": [
+      {
+        "messageId": "msg-1",
+        "role": "user",
+        "parts": [{ "text": "Implement user authentication" }]
+      }
+    ]
+  },
+  "id": 1
+}
+```
+
+### Get Task Status
+
+**Method:** `task/get`
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "task/get",
+  "params": { "taskId": "task-789" },
+  "id": 2
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "id": "task-789",
+    "contextId": "ctx-123",
+    "status": {
+      "state": "completed",
+      "timestamp": "2026-03-03T10:35:00Z",
+      "message": {
+        "messageId": "msg-2",
+        "role": "agent",
+        "parts": [{ "text": "Authentication implemented successfully" }]
+      }
+    },
+    "artifacts": [
+      {
+        "artifactId": "artifact-1",
+        "name": "Implementation Summary",
+        "parts": [{ "text": "JWT authentication with login, logout, and refresh endpoints" }]
+      }
+    ]
+  },
+  "id": 2
+}
+```
+
+### List Tasks
+
+**Method:** `task/list`
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "task/list",
+  "params": {
+    "contextId": "ctx-123",
+    "state": "completed"
+  },
+  "id": 3
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "tasks": [
+      {
+        "id": "task-789",
+        "contextId": "ctx-123",
+        "status": { "state": "completed", "timestamp": "2026-03-03T10:35:00Z" }
+      }
+    ]
+  },
+  "id": 3
+}
+```
+
+### Cancel Task
+
+**Method:** `task/cancel`
+
+**Request:**
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "task/cancel",
+  "params": { "taskId": "task-789" },
+  "id": 4
+}
+```
+
+**Response:**
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "id": "task-789",
+    "status": {
+      "state": "canceled",
+      "timestamp": "2026-03-03T10:36:00Z"
+    }
+  },
+  "id": 4
+}
+```
+
+## Example Usage
+
+### Creating an A2A Task
+
+```typescript
+import { getA2ATaskBridge } from "@/core/a2a";
+
+const taskBridge = getA2ATaskBridge();
+
+// Create a task linked to a Routa agent
+const task = taskBridge.createTask({
+  userPrompt: "Implement user authentication",
+  workspaceId: "workspace-123",
+  routaAgentId: "agent-456",
+  contextId: "ctx-789"
+});
+
+console.log(task);
+// {
+//   id: "task-abc",
+//   contextId: "ctx-789",
+//   status: { state: "submitted", timestamp: "2026-03-03T10:30:00Z" },
+//   history: [{ messageId: "msg-1", role: "user", parts: [{ text: "..." }] }],
+//   artifacts: []
+// }
+```
+
+### Registering an Existing Agent as A2A Task
+
+```typescript
+import { getA2ATaskBridge } from "@/core/a2a";
+import { AgentRole, AgentStatus } from "@/core/models/agent";
+
+const taskBridge = getA2ATaskBridge();
+
+// Register an existing Routa agent as an A2A task
+const task = taskBridge.registerAgentAsTask({
+  id: "agent-123",
+  name: "Auth Implementer",
+  role: AgentRole.CRAFTER,
+  status: AgentStatus.ACTIVE,
+  workspaceId: "workspace-456",
+  createdAt: new Date(),
+  metadata: { taskType: "implementation" }
+});
+
+console.log(task.metadata?.skillId); // "development"
+```
+
+### Updating Task from Agent Status
+
+```typescript
+import { getA2ATaskBridge } from "@/core/a2a";
+import { AgentStatus } from "@/core/models/agent";
+
+const taskBridge = getA2ATaskBridge();
+
+// Update A2A task when Routa agent status changes
+const updatedTask = taskBridge.updateTaskFromAgent(
+  "task-abc",
+  AgentStatus.COMPLETED,
+  "Auth Implementer"
+);
+
+console.log(updatedTask?.status.state); // "completed"
+```
+
+### HTTP Endpoint Integration
+
+```typescript
+// pages/api/a2a/rpc.ts
+import { getA2ATaskBridge } from "@/core/a2a";
+
+export default async function handler(req, res) {
+  const { method, params, id } = req.body;
+  const taskBridge = getA2ATaskBridge();
+
+  switch (method) {
+    case "task/create":
+      const task = taskBridge.createTask({
+        userPrompt: params.message.parts[0].text,
+        workspaceId: params.workspaceId,
+        contextId: params.contextId
+      });
+      return res.json({ jsonrpc: "2.0", result: task, id });
+
+    case "task/get":
+      const taskResult = taskBridge.getTask(params.taskId);
+      if (!taskResult) {
+        return res.json({ jsonrpc: "2.0", error: { code: -32602, message: "Task not found" }, id });
+      }
+      return res.json({ jsonrpc: "2.0", result: taskResult, id });
+
+    case "task/list":
+      const tasks = taskBridge.listTasks({
+        workspaceId: params.workspaceId,
+        contextId: params.contextId,
+        state: params.state
+      });
+      return res.json({ jsonrpc: "2.0", result: { tasks }, id });
+
+    case "task/cancel":
+      const canceled = taskBridge.cancelTask(params.taskId);
+      return res.json({ jsonrpc: "2.0", result: canceled, id });
+
+    default:
+      return res.json({ jsonrpc: "2.0", error: { code: -32601, message: "Method not found" }, id });
+  }
+}
+```
+
+## Session Registry
+
+A2A sessions are tracked separately from ACP sessions:
+
+```typescript
+// src/core/a2a/a2a-session-registry.ts
+interface A2ASessionInfo {
+  sessionId: string;
+  contextId: string;
+  workspaceId?: string;
+  createdAt: string;
+  lastActiveAt?: string;
+}
+
+const registry = getA2aSessionRegistry();
+
+// Register a new session
+registry.registerSession({
+  sessionId: "session-123",
+  contextId: "ctx-456",
+  workspaceId: "workspace-789",
+  createdAt: new Date().toISOString()
+});
+
+// Get session by context ID
+const session = registry.getSessionByContext("ctx-456");
+
+// List all sessions
+const allSessions = registry.listSessions();
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Link Tasks to Agents" icon="link">
+    A2A tasks should always be linked to backing Routa agents for state synchronization:
+    
+    ```typescript
+    // Create task AND agent together
+    const agent = await agentStore.create({ name: "Worker", role: AgentRole.CRAFTER });
+    const task = taskBridge.createTask({
+      userPrompt: "Do work",
+      routaAgentId: agent.id,
+      workspaceId: "workspace-123"
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Use Artifacts for Rich Outputs" icon="file-export">
+    When agents complete work, create artifacts with structured data:
+    
+    ```typescript
+    const task = taskBridge.getTask(taskId);
+    task.artifacts = [
+      {
+        artifactId: uuidv4(),
+        name: "Implementation Report",
+        parts: [
+          { text: "Summary of changes" },
+          { data: { filesModified: [...], testsAdded: [...] }, mediaType: "application/json" }
+        ]
+      }
+    ];
+    ```
+  </Accordion>
+
+  <Accordion title="Handle Terminal States Properly" icon="stop-circle">
+    Terminal states (`completed`, `failed`, `canceled`) cannot be changed:
+    
+    ```typescript
+    const task = taskBridge.getTask(taskId);
+    const terminal = ["completed", "failed", "canceled", "rejected"];
+    
+    if (terminal.includes(task.status.state)) {
+      throw new Error("Task is in terminal state and cannot be modified");
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Implement Task Discovery" icon="search">
+    Expose a discovery endpoint for external clients to find available skills:
+    
+    ```typescript
+    // GET /api/a2a/skills
+    export default function handler(req, res) {
+      const skills = [
+        { id: "coordination", name: "Task Coordination", description: "Orchestrate multi-agent workflows" },
+        { id: "development", name: "Code Implementation", description: "Implement code changes" },
+        { id: "verification", name: "Code Review", description: "Verify and validate code" },
+        { id: "full-stack-development", name: "Full Stack Development", description: "Plan and implement independently" }
+      ];
+      res.json({ skills });
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Protocols
+
+- **[MCP (Model Context Protocol)](/protocols/mcp)** — Internal coordination tools
+- **[ACP (Agent Client Protocol)](/protocols/acp)** — Agent process management
+
+## API Reference
+
+<CardGroup cols={2}>
+  <Card title="Task Bridge" icon="bridge" href="/api-reference/a2a/task-bridge">
+    Map Routa agents to A2A tasks
+  </Card>
+  <Card title="Session Registry" icon="database" href="/api-reference/a2a/session-registry">
+    Manage A2A session lifecycle
+  </Card>
+  <Card title="Executor" icon="play" href="/api-reference/a2a/executor">
+    Execute A2A protocol operations
+  </Card>
+  <Card title="JSON-RPC API" icon="code" href="/api-reference/a2a/rpc">
+    JSON-RPC method reference
+  </Card>
+</CardGroup>

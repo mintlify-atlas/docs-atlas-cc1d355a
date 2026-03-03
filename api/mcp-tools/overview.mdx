@@ -1,0 +1,147 @@
+---
+title: MCP Tools Overview
+description: Model Context Protocol tools for multi-agent coordination in Routa
+---
+
+## What are MCP Tools?
+
+MCP (Model Context Protocol) tools are the coordination primitives that power Routa's multi-agent system. They enable agents to:
+
+- Create and manage other agents
+- Delegate tasks across the agent hierarchy
+- Share information through notes
+- Subscribe to workspace events
+- Manage git operations and workspace state
+
+Every tool in Routa is exposed via MCP, making them accessible to both internal agents and external MCP clients.
+
+## Tool Categories
+
+<CardGroup cols={2}>
+  <Card title="Agent Tools" icon="users" href="/api/mcp-tools/agent-tools">
+    Create agents, delegate tasks, coordinate work across the agent hierarchy
+  </Card>
+  <Card title="Task Tools" icon="list-check" href="/api/mcp-tools/task-tools">
+    Create, update, and track tasks with status, dependencies, and verification
+  </Card>
+  <Card title="Note Tools" icon="note-sticky" href="/api/mcp-tools/note-tools">
+    Shared documents for specs, task blocks, and agent collaboration
+  </Card>
+  <Card title="Workspace Tools" icon="folder" href="/api/mcp-tools/workspace-tools">
+    Git operations, workspace metadata, and specialist management
+  </Card>
+</CardGroup>
+
+## Tool Modes: Essential vs Full
+
+Routa supports two tool registration modes to optimize for different use cases:
+
+### Essential Mode (12 tools)
+
+The **essential** mode includes only the core coordination tools needed for the Routa workflow:
+
+- **Agent tools (7)**: `list_agents`, `read_agent_conversation`, `create_agent`, `set_agent_name`, `delegate_task`, `delegate_task_to_agent`, `send_message_to_agent`, `report_to_parent`
+- **Note tools (5)**: `create_note`, `read_note`, `list_notes`, `set_note_content`, `convert_task_blocks`
+
+This mode is optimized for:
+- Faster tool discovery and selection
+- Reduced prompt complexity
+- Specialist agents with focused responsibilities
+
+### Full Mode (34 tools)
+
+The **full** mode includes all available tools:
+
+- **Task tools (4)**: `create_task`, `list_tasks`, `update_task_status`, `update_task`
+- **Agent tools (14)**: All essential tools + `wake_or_create_task_agent`, `send_message_to_task_agent`, `get_agent_status`, `get_agent_summary`, `subscribe_to_events`, `unsubscribe_from_events`
+- **Note tools (7)**: All essential tools + `append_to_note`, `get_my_task`
+- **Workspace tools (9)**: `git_status`, `git_diff`, `git_commit`, `get_workspace_info`, `get_workspace_details`, `set_workspace_title`, `list_workspaces`, `create_workspace`, `list_specialists`
+
+This mode is optimized for:
+- Maximum flexibility
+- Power users and custom workflows
+- Direct access to all capabilities
+
+<Note>
+  The mode is configured per MCP server instance via `RoutaMcpToolManager.setToolMode(mode)`.
+</Note>
+
+## Setting Tool Mode
+
+```typescript
+import { RoutaMcpToolManager } from "@/core/mcp/routa-mcp-tool-manager";
+
+const toolManager = new RoutaMcpToolManager(agentTools, workspaceId);
+
+// Use essential mode (default)
+toolManager.setToolMode("essential");
+
+// Or use full mode
+toolManager.setToolMode("full");
+
+toolManager.registerTools(mcpServer);
+```
+
+## Common Patterns
+
+### Coordinator Pattern
+
+1. Read/write the spec note with `set_note_content` (auto-creates tasks from `@@@task` blocks)
+2. Delegate tasks with `delegate_task_to_agent`
+3. Subscribe to `TASK_COMPLETED` events to coordinate waves
+4. Read agent conversations with `read_agent_conversation` to check progress
+
+### Implementor Pattern
+
+1. Read task details with `read_note` or `get_my_task`
+2. Coordinate with other agents via `list_agents` and `read_agent_conversation`
+3. Update task notes with progress
+4. Report completion with `report_to_parent`
+
+### Verifier Pattern
+
+1. Read spec and task notes
+2. Check git diff with workspace tools
+3. Run verification commands
+4. Report results with `report_to_parent`
+
+## Tool Result Format
+
+All tools return a `ToolResult` with this structure:
+
+```typescript
+type ToolResult = 
+  | { success: true; data: any }
+  | { success: false; error: string }
+```
+
+MCP tools wrap this in the MCP response format:
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "{\"key\":\"value\"}"
+    }
+  ],
+  "isError": false
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Agent Tools" icon="users" href="/api/mcp-tools/agent-tools">
+    Learn about agent coordination and delegation
+  </Card>
+  <Card title="Task Tools" icon="list-check" href="/api/mcp-tools/task-tools">
+    Understand task creation and lifecycle management
+  </Card>
+  <Card title="Note Tools" icon="note-sticky" href="/api/mcp-tools/note-tools">
+    Master the spec workflow and task block parsing
+  </Card>
+  <Card title="Workspace Tools" icon="folder" href="/api/mcp-tools/workspace-tools">
+    Explore git integration and workspace management
+  </Card>
+</CardGroup>

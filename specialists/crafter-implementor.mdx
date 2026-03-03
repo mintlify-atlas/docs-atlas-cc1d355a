@@ -1,0 +1,293 @@
+---
+title: Crafter Implementor
+description: The code implementation specialist
+icon: code
+---
+
+## Overview
+
+The **Crafter** (also called Implementor) is the specialist that executes implementation tasks. It writes code following a specific task scope with no refactoring or scope creep.
+
+**Key principle:** Implement the assigned task — nothing more, nothing less.
+
+## Configuration
+
+```yaml
+id: crafter
+name: Implementor
+role: CRAFTER
+defaultModelTier: fast
+source: bundled
+```
+
+See `resources/specialists/crafter.md` and `resources/specialists/crafter.yaml` for the full definition.
+
+<Note>
+Crafter uses the `fast` model tier for efficiency. Most implementation tasks don't require the reasoning capabilities of the `smart` tier.
+</Note>
+
+## Hard Rules
+
+<Warning>
+These rules prevent scope creep and ensure clean, focused implementations:
+
+0. **Name yourself first** - Call `set_agent_name` with a short task-focused name (1-5 words) in your first response
+1. **No scope creep** - Only implement what the task note asks
+2. **No refactors** - Ask coordinator for separate task if refactoring is needed
+3. **Coordinate** - Check `list_agents`/`read_agent_conversation` to avoid conflicts
+4. **Notes only** - Don't create markdown files for collaboration
+5. **Don't delegate** - Message coordinator if blocked, don't spawn sub-agents
+</Warning>
+
+From `resources/specialists/crafter.md:13`.
+
+## Execution Workflow
+
+Crafter follows this workflow for every task:
+
+### 1. Read Spec
+Read the spec note to understand acceptance criteria and verification plan.
+
+```typescript
+read_note(noteId="spec")
+```
+
+### 2. Read Task Note
+Read your assigned task note to understand:
+- Objective - What this task achieves
+- Scope - What files/areas are in scope
+- Definition of Done - Specific completion checks
+
+### 3. Preflight Conflict Check
+Use `list_agents` and `read_agent_conversation` to see what other agents are working on.
+
+<Note>
+If you expect file overlap with another agent, message the coordinator immediately. Don't proceed and risk merge conflicts.
+</Note>
+
+### 4. Implement Minimally
+Write code following existing patterns in the codebase. Keep changes minimal and focused.
+
+### 5. Run Verification
+Run verification commands from the task note.
+
+**If you cannot run verification commands, explicitly say so and why.**
+
+### 6. Commit
+Commit with a clear message describing what changed.
+
+### 7. Update Task Note
+Update the task note with:
+- What changed
+- Files touched
+- Verification commands run + results
+
+### 8. Report to Parent
+Call `report_to_parent` (see Completion section).
+
+See `resources/specialists/crafter.md:21` for the execution workflow.
+
+## Completion (REQUIRED)
+
+<Warning>
+You MUST call `report_to_parent` when done. Without this, the coordinator won't know you've completed the task.
+</Warning>
+
+```typescript
+report_to_parent({
+  summary: "Implemented user authentication schema. Added users and sessions tables. Migration runs successfully.",
+  success: true,
+  filesModified: ["src/db/schema.ts", "src/db/migrations/20240303_auth.sql"],
+  taskId: "task-123"
+})
+```
+
+**Summary should include:**
+- What you did (1-3 sentences)
+- Verification results
+- Any risks or follow-ups
+
+From `resources/specialists/crafter.md:30`.
+
+## Role Reminder
+
+```
+Stay within task scope. No refactors, no scope creep.
+Call report_to_parent when complete.
+```
+
+From `resources/specialists/crafter.md:6`.
+
+## Example Task Execution
+
+Here's an example of a Crafter executing a task:
+
+### Input: Task Note
+
+```markdown
+# Implement authentication schema
+Create database schema for user accounts and sessions.
+
+## Scope
+- `src/db/schema.ts` - Add users and sessions tables
+- `src/db/migrations/` - Create migration file
+- No UI changes
+
+## Definition of Done
+- Users table with id, email, passwordHash, createdAt
+- Sessions table with id, userId, token, expiresAt
+- Migration runs without errors
+
+## Verification
+- `npm run db:migrate`
+- `npm run db:studio` - Verify tables exist
+```
+
+### Execution Steps
+
+1. **Read spec and task note**
+   ```typescript
+   read_note(noteId="spec")
+   read_note(noteId="task-123")
+   ```
+
+2. **Check for conflicts**
+   ```typescript
+   list_agents()
+   // No other agents working on database schema
+   ```
+
+3. **Implement schema**
+   ```typescript
+   // Read existing schema
+   read_file("src/db/schema.ts")
+   
+   // Add users and sessions tables
+   edit_file("src/db/schema.ts", ...)
+   
+   // Create migration
+   write_file("src/db/migrations/20240303_auth.sql", ...)
+   ```
+
+4. **Run verification**
+   ```bash
+   npm run db:migrate
+   # ✓ Migration successful
+   
+   npm run db:studio
+   # ✓ Tables visible in studio
+   ```
+
+5. **Commit**
+   ```bash
+   git add src/db/schema.ts src/db/migrations/20240303_auth.sql
+   git commit -m "Add users and sessions schema for authentication"
+   ```
+
+6. **Update task note**
+   ```typescript
+   append_to_note(noteId="task-123", content=`
+   ## Implementation Complete
+   
+   Added:
+   - users table (id, email, passwordHash, createdAt)
+   - sessions table (id, userId, token, expiresAt)
+   - Migration file: 20240303_auth.sql
+   
+   Verification:
+   - ✓ npm run db:migrate - successful
+   - ✓ npm run db:studio - tables visible
+   
+   Files modified:
+   - src/db/schema.ts
+   - src/db/migrations/20240303_auth.sql
+   `)
+   ```
+
+7. **Report completion**
+   ```typescript
+   report_to_parent({
+     summary: "Implemented authentication schema with users and sessions tables. Migration runs successfully and tables are visible in database studio.",
+     success: true,
+     filesModified: [
+       "src/db/schema.ts",
+       "src/db/migrations/20240303_auth.sql"
+     ],
+     taskId: "task-123"
+   })
+   ```
+
+## Handling Blockers
+
+<Warning>
+If you encounter a blocker:
+
+1. **Do NOT try to work around it** by expanding scope
+2. **Do NOT delegate** to another agent
+3. **Message the coordinator** using `send_message_to_agent`
+4. **Report failure** with `report_to_parent` if you cannot complete the task
+</Warning>
+
+Example blocker message:
+
+```typescript
+send_message_to_agent(
+  agentId: "coordinator-123",
+  message: "Blocked on task-123: The database schema in main branch has conflicting changes. Need guidance on how to merge or if task scope should change."
+)
+```
+
+## Coordination with Other Agents
+
+Before starting implementation, check what other agents are doing:
+
+```typescript
+// List all active agents
+const agents = list_agents();
+
+// Read conversations of agents working on related files
+for (const agent of agents.filter(a => a.status === 'active')) {
+  const conversation = read_agent_conversation(agent.id);
+  // Check if they're modifying files you need to touch
+}
+```
+
+If there's overlap, message the coordinator before proceeding.
+
+## System Prompt Location
+
+The full system prompt is defined in:
+- `resources/specialists/crafter.md` (Markdown format)
+- `resources/specialists/crafter.yaml` (YAML config)
+- `src/core/orchestration/specialist-prompts.ts:112` (Hardcoded fallback)
+
+## Best Practices
+
+1. **Follow existing patterns** - Match the coding style and architecture of the codebase
+2. **Keep changes minimal** - Only modify what's necessary for the task
+3. **Run verification** - Always execute the verification commands from the task note
+4. **Update the task note** - Document what you did and what verification you ran
+5. **Report completion** - Always call `report_to_parent` when done
+
+## Common Mistakes
+
+<Warning>
+Avoid these common implementor mistakes:
+
+- **Refactoring unrelated code** - Stay within the task scope
+- **Skipping verification** - Always run the verification commands
+- **Not checking for conflicts** - Use `list_agents` before starting
+- **Forgetting to report** - Must call `report_to_parent` when complete
+- **Creating .md files** - Use notes instead
+</Warning>
+
+## Related Specialists
+
+<CardGroup cols={2}>
+  <Card title="Routa Coordinator" icon="diagram-project" href="/specialists/routa-coordinator">
+    The specialist that delegates tasks to Crafter
+  </Card>
+  <Card title="Gate Verifier" icon="shield-check" href="/specialists/gate-verifier">
+    The specialist that verifies Crafter's work
+  </Card>
+</CardGroup>

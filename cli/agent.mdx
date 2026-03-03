@@ -1,0 +1,294 @@
+---
+title: Agent Commands
+description: Manage agents in Routa workspaces via CLI
+---
+
+## Overview
+
+The `routa agent` command group provides tools for managing agents in Routa workspaces. Agents are AI entities that perform tasks, collaborate with other agents, and coordinate work through the Routa platform.
+
+## Agent Roles
+
+Routa supports four built-in agent roles:
+
+| Role | Icon | Description |
+|------|------|-------------|
+| **ROUTA** | 🔵 | Coordinator - plans work, parses intent into structured Spec, creates tasks, delegates to specialists |
+| **CRAFTER** | 🟠 | Implementor - executes implementation tasks, writes code, makes focused changes |
+| **GATE** | 🟢 | Verifier - reviews work, validates against acceptance criteria, approves or requests fixes |
+| **DEVELOPER** | 🎯 | Solo agent - plans and implements independently without delegation |
+
+## Commands
+
+### List Agents
+
+List all agents in a workspace:
+
+```bash
+routa agent list [OPTIONS]
+```
+
+**Options:**
+
+- `--workspace-id <ID>` - Workspace ID (default: `default`)
+
+**Example:**
+
+```bash
+routa agent list --workspace-id my-project
+```
+
+**Output:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "agents": [
+      {
+        "id": "agent_abc123",
+        "name": "coordinator-1",
+        "role": "ROUTA",
+        "status": "idle",
+        "workspaceId": "default",
+        "parentId": null,
+        "createdAt": "2026-03-03T10:30:00Z",
+        "updatedAt": "2026-03-03T10:30:00Z"
+      },
+      {
+        "id": "agent_def456",
+        "name": "crafter-1",
+        "role": "CRAFTER",
+        "status": "working",
+        "workspaceId": "default",
+        "parentId": "agent_abc123",
+        "createdAt": "2026-03-03T10:31:00Z",
+        "updatedAt": "2026-03-03T10:35:00Z"
+      }
+    ]
+  }
+}
+```
+
+### Create Agent
+
+Create a new agent in a workspace:
+
+```bash
+routa agent create [OPTIONS]
+```
+
+**Options:**
+
+- `--name <NAME>` - Agent name (required)
+- `--role <ROLE>` - Agent role: `ROUTA`, `CRAFTER`, `GATE`, or `DEVELOPER` (required)
+- `--workspace-id <ID>` - Workspace ID (default: `default`)
+- `--parent-id <ID>` - Parent agent ID (optional)
+
+**Examples:**
+
+```bash
+# Create a DEVELOPER agent
+routa agent create \
+  --name "solo-dev" \
+  --role DEVELOPER \
+  --workspace-id default
+
+# Create a CRAFTER agent with parent
+routa agent create \
+  --name "implementation-agent" \
+  --role CRAFTER \
+  --workspace-id my-project \
+  --parent-id agent_abc123
+```
+
+**Output:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "agentId": "agent_xyz789",
+    "name": "solo-dev",
+    "role": "DEVELOPER",
+    "status": "idle",
+    "workspaceId": "default",
+    "parentId": null,
+    "createdAt": "2026-03-03T12:00:00Z"
+  }
+}
+```
+
+### Get Agent Status
+
+Get the current status and details of an agent:
+
+```bash
+routa agent status --id <AGENT_ID>
+```
+
+**Options:**
+
+- `--id <ID>` - Agent ID (required)
+
+**Example:**
+
+```bash
+routa agent status --id agent_abc123
+```
+
+**Output:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "id": "agent_abc123",
+    "name": "coordinator-1",
+    "role": "ROUTA",
+    "status": "working",
+    "workspaceId": "default",
+    "parentId": null,
+    "currentTask": "task_456",
+    "completedTasks": 3,
+    "createdAt": "2026-03-03T10:30:00Z",
+    "updatedAt": "2026-03-03T12:15:00Z",
+    "lastActivity": "2026-03-03T12:15:00Z"
+  }
+}
+```
+
+### Get Agent Summary
+
+Get a summary of an agent's activities:
+
+```bash
+routa agent summary --id <AGENT_ID>
+```
+
+**Options:**
+
+- `--id <ID>` - Agent ID (required)
+
+**Example:**
+
+```bash
+routa agent summary --id agent_abc123
+```
+
+**Output:**
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "id": "agent_abc123",
+    "name": "coordinator-1",
+    "role": "ROUTA",
+    "status": "idle",
+    "workspaceId": "default",
+    "statistics": {
+      "totalTasks": 5,
+      "completedTasks": 3,
+      "failedTasks": 0,
+      "activeTime": "2h 15m"
+    }
+  }
+}
+```
+
+## Agent Lifecycle
+
+Agents go through several states during their lifecycle:
+
+1. **Created** - Agent is registered in the workspace
+2. **Idle** - Agent is available but not working on any task
+3. **Working** - Agent is actively processing a task
+4. **Waiting** - Agent is waiting for a dependency or response
+5. **Completed** - Agent has finished its work
+6. **Failed** - Agent encountered an error
+
+## Working with Agent Hierarchies
+
+Agents can have parent-child relationships, enabling task delegation:
+
+```bash
+# Create coordinator (parent)
+routa agent create --name "coordinator" --role ROUTA --workspace-id project
+
+# Create implementor (child)
+routa agent create \
+  --name "implementor" \
+  --role CRAFTER \
+  --workspace-id project \
+  --parent-id <coordinator-id>
+
+# Create verifier (child)
+routa agent create \
+  --name "verifier" \
+  --role GATE \
+  --workspace-id project \
+  --parent-id <coordinator-id>
+```
+
+## Integration with Other Commands
+
+Agent commands work seamlessly with other Routa CLI features:
+
+```bash
+# Create agent, then list tasks assigned to it
+AGENT_ID=$(routa agent create --name dev --role DEVELOPER | jq -r '.result.agentId')
+routa task list --workspace-id default | jq ".result.tasks[] | select(.assignedTo == \"$AGENT_ID\")"
+
+# Get agent status and check current task
+routa agent status --id $AGENT_ID | jq '.result.currentTask'
+```
+
+## Programmatic Usage
+
+All agent commands return structured JSON, making them ideal for scripting:
+
+```bash
+#!/bin/bash
+# Create a team of agents for a project
+
+WORKSPACE="my-project"
+
+# Create coordinator
+COORD=$(routa agent create \
+  --name "coordinator" \
+  --role ROUTA \
+  --workspace-id "$WORKSPACE" | jq -r '.result.agentId')
+
+echo "Created coordinator: $COORD"
+
+# Create implementors
+for i in {1..3}; do
+  IMPL=$(routa agent create \
+    --name "crafter-$i" \
+    --role CRAFTER \
+    --workspace-id "$WORKSPACE" \
+    --parent-id "$COORD" | jq -r '.result.agentId')
+  echo "Created implementor $i: $IMPL"
+done
+
+# Create verifier
+GATE=$(routa agent create \
+  --name "gate" \
+  --role GATE \
+  --workspace-id "$WORKSPACE" \
+  --parent-id "$COORD" | jq -r '.result.agentId')
+
+echo "Created verifier: $GATE"
+echo "Team setup complete!"
+```
+
+## Next Steps
+
+- Learn about [Task commands](/cli/task) to assign work to agents
+- Try [Interactive chat](/cli/chat) to communicate with agents
+- Explore [Workflow automation](/cli/workflow) for multi-agent coordination

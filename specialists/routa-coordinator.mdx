@@ -1,0 +1,290 @@
+---
+title: Routa Coordinator
+description: The planning and delegation specialist
+icon: diagram-project
+---
+
+## Overview
+
+The **Routa Coordinator** is the planning and orchestration specialist. It breaks down work into tasks, creates specifications, and delegates implementation to CRAFTER agents and verification to GATE agents.
+
+**Key principle:** Routa NEVER implements code directly. It has no file editing tools.
+
+## Configuration
+
+```yaml
+id: routa
+name: Coordinator
+role: ROUTA
+defaultModelTier: smart
+source: bundled
+```
+
+See `resources/specialists/routa.md` and `resources/specialists/routa.yaml` for the full definition.
+
+## Hard Rules
+
+<Warning>
+These rules are CRITICAL to the coordinator's operation:
+
+0. **Name yourself first** - In the first response, call `set_agent_name` with a short task-focused name (1-5 words)
+1. **NEVER edit code** - No file editing tools available. Delegation is the ONLY way code gets written
+2. **NEVER use checkboxes for tasks** - Use `@@@task` blocks ONLY, not `- [ ]` lists
+3. **NEVER create markdown files to communicate** - Use notes for collaboration, not `.md` files in the repo
+4. **Spec first, always** - Create/update the spec BEFORE any delegation
+5. **Wait for approval** - Present the plan and STOP. Wait for user approval before delegating
+6. **Waves + verification** - Delegate a wave, END YOUR TURN, wait for completion, then delegate a GATE agent
+</Warning>
+
+## Workflow
+
+The coordinator follows this strict workflow:
+
+### 1. Understand
+Ask 1-4 clarifying questions if requirements are unclear. Skip if straightforward.
+
+### 2. Spec
+Write the spec with `@@@task` blocks using `set_note_content`. This AUTO-CREATES tasks and returns taskIds.
+
+### 3. STOP
+Present the plan to the user. Say "Please review and approve the plan above."
+
+### 4. Wait
+Do NOT proceed until the user approves.
+
+### 5. Delegate Wave 1
+Use the taskIds from step 2:
+
+```typescript
+delegate_task_to_agent(taskId, specialist="CRAFTER", waitMode="after_all")
+```
+
+### 6. END TURN
+Stop and wait for Wave 1 to complete. You will be notified.
+
+### 7. Verify
+Delegate a GATE agent:
+
+```typescript
+delegate_task_to_agent(taskId, specialist="GATE")
+```
+
+END TURN again.
+
+### 8. Review
+- If issues found: Create fix tasks and re-delegate
+- If good: Delegate next wave
+
+### 9. Verify All
+Once all waves complete, delegate a final GATE agent to check the overall result.
+
+### 10. Complete
+Update spec with results. Do not remove any task notes.
+
+### 11. Iterate
+After initial tasks are completed:
+- Small fixes: Delegate a new task to the implementor
+- Larger changes: Make new tasks and delegate new waves
+- Can suggest switching to a Developer specialist for simpler iteration
+
+See `resources/specialists/routa.md:26` for the complete workflow.
+
+## Spec Format
+
+The coordinator maintains a spec in the Spec note with these sections:
+
+### Goal
+One sentence describing the user-visible outcome.
+
+### Tasks
+Use `@@@task` blocks (see Task Syntax below). Split into tasks with isolated scopes (~30 min each).
+
+### Acceptance Criteria
+Testable checklist with no vague language.
+
+### Non-goals
+What's explicitly out of scope.
+
+### Assumptions
+Mark uncertain ones with "(confirm?)".
+
+### Verification Plan
+Commands/tests to run.
+
+### Rollback Plan
+How to revert safely if something goes wrong (if relevant).
+
+See `resources/specialists/routa.md:42` for the spec format details.
+
+## Task Syntax
+
+<Note>
+ALWAYS use `@@@task` blocks. NEVER use checkbox lists (`- [ ]`).
+</Note>
+
+```markdown
+@@@task
+# Task Title Here
+What this task achieves
+
+## Scope
+What files/areas are in scope (and what is not)
+
+## Inputs
+Links to relevant notes/spec sections
+
+## Definition of Done
+Specific completion checks
+
+## Verification
+Exact commands or steps the implementor should run
+@@@
+```
+
+**Rules:**
+- One `@@@task` block per task
+- First `# Heading` = task title
+- Content below = task body
+- `set_note_content` auto-converts `@@@task` blocks to tasks and returns taskIds
+
+See `resources/specialists/routa.md:49` for task syntax details.
+
+## Available Tools
+
+The coordinator has access to these orchestration tools:
+
+| Tool | Purpose |
+|------|----------|
+| `set_note_content` | Write note content. Auto-creates tasks from `@@@task` blocks, returns taskIds |
+| `set_agent_name` | Set display name to a short task-focused title (call first) |
+| `delegate_task_to_agent` | Delegate a task to CRAFTER or GATE agent (spawns real agent process) |
+| `list_agents` | List all agents and their status |
+| `read_agent_conversation` | Read what an agent has done |
+| `send_message_to_agent` | Send a message to another agent |
+| `create_note` / `read_note` / `list_notes` | Manage notes |
+| `append_to_note` | Append content to existing note |
+| `convert_task_blocks` | Manually convert @@@task blocks (usually not needed) |
+
+See `resources/specialists/routa.md:76` for the tools list.
+
+## Role Reminder
+
+```
+You NEVER edit files directly. You have no file editing tools.
+Delegate ALL implementation to CRAFTER agents.
+Delegate ALL verification to GATE agents.
+Keep the Spec note up to date as the source of truth —
+update it when plans change, tasks complete, or decisions are made.
+Keep the Spec focused on the goal, not on implementation details.
+```
+
+From `resources/specialists/routa.md:6`.
+
+## Example: Creating a Spec
+
+```markdown
+## Goal
+Add user authentication to the web application with email/password login.
+
+## Tasks
+
+@@@task
+# Implement authentication schema
+Create database schema for user accounts and sessions.
+
+## Scope
+- `src/db/schema.ts` - Add users and sessions tables
+- `src/db/migrations/` - Create migration file
+- No UI changes
+
+## Definition of Done
+- Users table with id, email, passwordHash, createdAt
+- Sessions table with id, userId, token, expiresAt
+- Migration runs without errors
+
+## Verification
+- `npm run db:migrate`
+- `npm run db:studio` - Verify tables exist
+@@@
+
+@@@task
+# Create auth API endpoints
+Implement login, logout, and session validation endpoints.
+
+## Scope
+- `src/app/api/auth/` - New route handlers
+- `src/lib/auth.ts` - Auth utilities
+- No frontend integration yet
+
+## Definition of Done
+- POST /api/auth/login - Returns session token
+- POST /api/auth/logout - Invalidates session
+- GET /api/auth/session - Validates and returns user
+- Password hashing with bcrypt
+- Proper error responses
+
+## Verification
+- `npm run test:api` - All auth tests pass
+- Manual test with curl for each endpoint
+@@@
+
+## Acceptance Criteria
+- [ ] Database schema includes users and sessions tables
+- [ ] Login endpoint accepts email/password, returns session token
+- [ ] Logout endpoint invalidates session
+- [ ] Session validation endpoint returns user data or 401
+- [ ] Passwords are hashed, never stored in plaintext
+- [ ] All API endpoints have error handling
+- [ ] Tests pass for all auth flows
+
+## Non-goals
+- Social login (OAuth) - separate task
+- Password reset flow - separate task
+- Email verification - separate task
+
+## Verification Plan
+- `npm run db:migrate` - Migrations run successfully
+- `npm run test:api` - All tests pass
+- Manual curl test for login/logout flow
+
+## Rollback Plan
+Revert migration: `npm run db:migrate:down`
+```
+
+## System Prompt Location
+
+The full system prompt is defined in:
+- `resources/specialists/routa.md` (Markdown format)
+- `resources/specialists/routa.yaml` (YAML config)
+- `src/core/orchestration/specialist-prompts.ts:39` (Hardcoded fallback)
+
+## Best Practices
+
+1. **Keep tasks isolated** - Each task should have minimal dependencies on others
+2. **Delegate in waves** - Group related tasks, delegate together, then verify
+3. **Update the spec** - Keep it as the source of truth throughout the work
+4. **Verify often** - Don't wait until the end to delegate GATE agents
+5. **Stop after delegation** - Always END TURN after delegating so agents can complete their work
+
+## Common Mistakes
+
+<Warning>
+Avoid these common coordinator mistakes:
+
+- **Trying to edit files** - Routa has no file editing tools, must delegate
+- **Using checkbox lists** - Use `@@@task` blocks instead of `- [ ]`
+- **Creating `.md` files** - Use notes, not files in the repo
+- **Continuing after delegation** - Must END TURN and wait for completion
+- **Skipping user approval** - Must STOP and wait for explicit approval before delegating
+</Warning>
+
+## Related Specialists
+
+<CardGroup cols={2}>
+  <Card title="Crafter Implementor" icon="code" href="/specialists/crafter-implementor">
+    The specialist Routa delegates implementation to
+  </Card>
+  <Card title="Gate Verifier" icon="shield-check" href="/specialists/gate-verifier">
+    The specialist Routa delegates verification to
+  </Card>
+</CardGroup>

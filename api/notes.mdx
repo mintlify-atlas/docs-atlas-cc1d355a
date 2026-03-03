@@ -1,0 +1,520 @@
+---
+title: Note Management
+description: Create and manage collaborative notes and documentation
+---
+
+## Overview
+
+Notes provide a collaborative documentation system where agents and users can create, update, and share information. Notes support different types (spec, task, general) and can be organized by workspace and session.
+
+## Note Types
+
+| Type | Description |
+|------|-------------|
+| `spec` | Specification documents |
+| `task` | Task-related notes |
+| `general` | General purpose notes |
+
+## List Notes
+
+<CodeGroup>
+```bash cURL
+curl "http://localhost:3000/api/notes?workspaceId=default"
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/notes?workspaceId=default');
+const data = await response.json();
+console.log(data.notes);
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'http://localhost:3000/api/notes',
+    params={'workspaceId': 'default'}
+)
+notes = response.json()['notes']
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="GET /api/notes" type="GET">
+  List notes with optional filters
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="workspaceId" type="string" required>
+  Workspace ID (defaults to `"default"`)
+</ParamField>
+
+<ParamField query="type" type="string">
+  Filter by note type: `spec`, `task`, or `general`
+</ParamField>
+
+<ParamField query="noteId" type="string">
+  If provided, returns a single note
+</ParamField>
+
+### Response
+
+<ResponseField name="notes" type="array">
+  Array of note objects (when listing)
+</ResponseField>
+
+<ResponseField name="note" type="object">
+  Single note object (when querying by noteId)
+</ResponseField>
+
+### Note Object
+
+<ResponseField name="id" type="string" required>
+  Unique note identifier
+</ResponseField>
+
+<ResponseField name="title" type="string" required>
+  Note title
+</ResponseField>
+
+<ResponseField name="content" type="string" required>
+  Note content (supports Markdown)
+</ResponseField>
+
+<ResponseField name="workspaceId" type="string" required>
+  Workspace this note belongs to
+</ResponseField>
+
+<ResponseField name="metadata" type="object" required>
+  Metadata object containing type and custom fields
+</ResponseField>
+
+<ResponseField name="metadata.type" type="string" required>
+  Note type: `spec`, `task`, or `general`
+</ResponseField>
+
+<ResponseField name="metadata.taskStatus" type="string">
+  Associated task status (for task notes)
+</ResponseField>
+
+<ResponseField name="metadata.assignedAgentIds" type="array">
+  Array of agent IDs assigned to this note
+</ResponseField>
+
+<ResponseField name="metadata.parentNoteId" type="string">
+  ID of parent note (for hierarchical notes)
+</ResponseField>
+
+<ResponseField name="metadata.linkedTaskId" type="string">
+  ID of linked task
+</ResponseField>
+
+<ResponseField name="metadata.custom" type="object">
+  Custom metadata fields
+</ResponseField>
+
+<ResponseField name="createdAt" type="string" required>
+  ISO 8601 timestamp of creation
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string" required>
+  ISO 8601 timestamp of last update
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "notes": [
+    {
+      "id": "note-abc123",
+      "title": "API Design Specification",
+      "content": "# API Design\n\nThis document outlines...",
+      "workspaceId": "default",
+      "metadata": {
+        "type": "spec",
+        "custom": {
+          "version": "1.0"
+        }
+      },
+      "createdAt": "2026-03-03T10:00:00.000Z",
+      "updatedAt": "2026-03-03T10:30:00.000Z"
+    }
+  ]
+}
+```
+
+## Create or Update Note
+
+<CodeGroup>
+```bash cURL
+# Create new note
+curl -X POST http://localhost:3000/api/notes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "API Design Specification",
+    "content": "# API Design\n\nDetailed specs...",
+    "workspaceId": "default",
+    "type": "spec"
+  }'
+
+# Update existing note
+curl -X POST http://localhost:3000/api/notes \
+  -H "Content-Type: application/json" \
+  -d '{
+    "noteId": "note-abc123",
+    "title": "Updated Title",
+    "content": "Updated content",
+    "workspaceId": "default"
+  }'
+```
+
+```javascript JavaScript
+// Create new note
+const response = await fetch('http://localhost:3000/api/notes', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    title: 'API Design Specification',
+    content: '# API Design\n\nDetailed specs...',
+    workspaceId: 'default',
+    type: 'spec'
+  })
+});
+const data = await response.json();
+console.log(data.note.id);
+
+// Update existing note
+const updateResponse = await fetch('http://localhost:3000/api/notes', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    noteId: 'note-abc123',
+    content: 'Updated content',
+    workspaceId: 'default'
+  })
+});
+```
+
+```python Python
+import requests
+
+# Create new note
+response = requests.post(
+    'http://localhost:3000/api/notes',
+    json={
+        'title': 'API Design Specification',
+        'content': '# API Design\n\nDetailed specs...',
+        'workspaceId': 'default',
+        'type': 'spec'
+    }
+)
+note = response.json()['note']
+print(note['id'])
+
+# Update existing note
+update_response = requests.post(
+    'http://localhost:3000/api/notes',
+    json={
+        'noteId': 'note-abc123',
+        'content': 'Updated content',
+        'workspaceId': 'default'
+    }
+)
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="POST /api/notes" type="POST">
+  Create a new note or update an existing one
+</ParamField>
+
+### Request Body
+
+<ParamField body="noteId" type="string">
+  If provided, updates existing note. Otherwise creates new note.
+</ParamField>
+
+<ParamField body="title" type="string" required>
+  Note title (defaults to "Untitled" for new notes)
+</ParamField>
+
+<ParamField body="content" type="string">
+  Note content (supports Markdown)
+</ParamField>
+
+<ParamField body="workspaceId" type="string" required>
+  Workspace ID
+</ParamField>
+
+<ParamField body="type" type="string">
+  Note type: `spec`, `task`, or `general` (defaults to `general`)
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  Additional metadata for the note
+</ParamField>
+
+### Response
+
+<ResponseField name="note" type="object" required>
+  The created or updated note object
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "note": {
+    "id": "note-abc123",
+    "title": "API Design Specification",
+    "content": "# API Design\n\nDetailed specs...",
+    "workspaceId": "default",
+    "metadata": {
+      "type": "spec"
+    },
+    "createdAt": "2026-03-03T10:00:00.000Z",
+    "updatedAt": "2026-03-03T10:00:00.000Z"
+  }
+}
+```
+
+## Get Note by Path
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:3000/api/notes/default/note-abc123
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/notes/default/note-abc123');
+const data = await response.json();
+console.log(data.note);
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:3000/api/notes/default/note-abc123')
+note = response.json()['note']
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="GET /api/notes/{workspaceId}/{noteId}" type="GET">
+  Get a note by workspace and note ID
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="workspaceId" type="string" required>
+  The workspace ID
+</ParamField>
+
+<ParamField path="noteId" type="string" required>
+  The note ID
+</ParamField>
+
+### Response
+
+<ResponseField name="note" type="object" required>
+  The note object
+</ResponseField>
+
+## Delete Note (Query)
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE "http://localhost:3000/api/notes?noteId=note-abc123&workspaceId=default"
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/notes?noteId=note-abc123&workspaceId=default', {
+  method: 'DELETE'
+});
+const result = await response.json();
+console.log(result.deleted); // true
+```
+
+```python Python
+import requests
+
+response = requests.delete(
+    'http://localhost:3000/api/notes',
+    params={'noteId': 'note-abc123', 'workspaceId': 'default'}
+)
+result = response.json()
+print(result['deleted'])  # True
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="DELETE /api/notes" type="DELETE">
+  Delete a note using query parameters
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="noteId" type="string" required>
+  The note ID to delete
+</ParamField>
+
+<ParamField query="workspaceId" type="string">
+  Workspace ID (defaults to `"default"`)
+</ParamField>
+
+### Response
+
+<ResponseField name="deleted" type="boolean" required>
+  Always `true` when successful
+</ResponseField>
+
+<ResponseField name="noteId" type="string" required>
+  The deleted note ID
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "deleted": true,
+  "noteId": "note-abc123"
+}
+```
+
+## Delete Note (Path)
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:3000/api/notes/default/note-abc123
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/notes/default/note-abc123', {
+  method: 'DELETE'
+});
+const result = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.delete('http://localhost:3000/api/notes/default/note-abc123')
+result = response.json()
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="DELETE /api/notes/{workspaceId}/{noteId}" type="DELETE">
+  Delete a note using path parameters
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="workspaceId" type="string" required>
+  The workspace ID
+</ParamField>
+
+<ParamField path="noteId" type="string" required>
+  The note ID to delete
+</ParamField>
+
+### Response
+
+<ResponseField name="deleted" type="boolean" required>
+  Always `true` when successful
+</ResponseField>
+
+<ResponseField name="noteId" type="string" required>
+  The deleted note ID
+</ResponseField>
+
+## Note Events (SSE)
+
+<CodeGroup>
+```bash cURL
+curl "http://localhost:3000/api/notes/events?workspaceId=default"
+```
+
+```javascript JavaScript
+const eventSource = new EventSource('http://localhost:3000/api/notes/events?workspaceId=default');
+
+eventSource.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Note event:', data);
+};
+
+eventSource.onerror = (error) => {
+  console.error('SSE error:', error);
+  eventSource.close();
+};
+```
+
+```python Python
+import requests
+import json
+
+response = requests.get(
+    'http://localhost:3000/api/notes/events',
+    params={'workspaceId': 'default'},
+    stream=True
+)
+
+for line in response.iter_lines():
+    if line:
+        decoded_line = line.decode('utf-8')
+        if decoded_line.startswith('data: '):
+            data = json.loads(decoded_line[6:])
+            print('Note event:', data)
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="GET /api/notes/events" type="GET">
+  Server-Sent Events (SSE) stream for real-time note change notifications
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="workspaceId" type="string">
+  Filter events by workspace ID
+</ParamField>
+
+### Event Types
+
+The SSE stream sends events for:
+
+- Note created
+- Note updated
+- Note deleted
+
+### Event Format
+
+```
+data: {"type": "note-updated", "noteId": "note-abc123", "workspaceId": "default"}
+```
+
+## Error Responses
+
+### 400 Bad Request
+
+```json
+{
+  "error": "workspaceId is required"
+}
+```
+
+### 404 Not Found
+
+```json
+{
+  "error": "Note not found"
+}
+```

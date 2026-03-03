@@ -1,0 +1,657 @@
+---
+title: Using GitHub Virtual Workspace
+description: Import GitHub repositories as virtual workspaces for browsing and code review without local clones
+icon: github
+---
+
+## Overview
+
+Routa's GitHub Virtual Workspace feature allows you to import GitHub repositories for browsing, code review, and analysis **without cloning them locally**. This is particularly useful for:
+
+- **Serverless deployments** (Vercel) - No local file system required
+- **Code review workflows** - Inspect PRs and issues without checkout
+- **Repository exploration** - Browse unfamiliar codebases quickly
+- **Security analysis** - Examine code without executing it
+
+## How It Works
+
+<Steps>
+  <Step title="Download zipball">
+    Routa fetches the repository as a zip archive from GitHub's codeload API.
+  </Step>
+
+  <Step title="Extract to temporary directory">
+    The archive is extracted to `/tmp/routa-gh/{owner}--{repo}` (or in-memory for serverless).
+  </Step>
+
+  <Step title="Build file index">
+    A searchable file tree is created, excluding common directories like `node_modules` and `.git`.
+  </Step>
+
+  <Step title="Provide virtual filesystem">
+    Agents can read files, list directories, and search without `git clone`.
+  </Step>
+
+  <Step title="TTL-based cleanup">
+    Workspaces expire after 1 hour (configurable) to free up disk space.
+  </Step>
+</Steps>
+
+## Architecture
+
+Implementation: [src/core/github/github-workspace.ts](https://github.com/routa/routa-js/blob/main/src/core/github/github-workspace.ts)
+
+```typescript
+export interface GitHubWorkspace {
+  owner: string;
+  repo: string;
+  ref: string;           // branch/tag/sha
+  extractedPath: string; // /tmp/routa-gh/owner--repo
+  importedAt: Date;
+  fileCount: number;
+
+  getTree(): VirtualFileEntry[];               // Full file tree
+  readFile(filePath: string): string;          // Read file content
+  exists(filePath: string): boolean;           // Check if path exists
+  search(query: string, limit?: number): ...;  // Fuzzy search
+  dispose(): void;                             // Clean up
+}
+```
+
+### Key Features
+
+- **Caching**: Workspaces are cached in-memory for 1 hour (configurable TTL)
+- **Serverless compatible**: Works on Vercel with zipball download
+- **Security**: Path traversal protection (files must be within workspace)
+- **Performance**: File index built once, reused for searches
+
+## Usage
+
+### Via REST API
+
+#### Import a Repository
+
+```bash
+curl -X POST http://localhost:3000/api/github/workspaces \
+  -H "Content-Type: application/json" \
+  -d '{
+    "owner": "vercel",
+    "repo": "next.js",
+    "ref": "canary"
+  }'
+```
+
+Response:
+```json
+{
+  "owner": "vercel",
+  "repo": "next.js",
+  "ref": "canary",
+  "extractedPath": "/tmp/routa-gh/vercel--next.js",
+  "importedAt": "2026-03-03T12:00:00.000Z",
+  "fileCount": 4523
+}
+```
+
+#### List Active Workspaces
+
+```bash
+curl http://localhost:3000/api/github/workspaces
+```
+
+Response:
+```json
+[
+  {
+    "key": "vercel/next.js@canary",
+    "owner": "vercel",
+    "repo": "next.js",
+    "ref": "canary",
+    "fileCount": 4523,
+    "importedAt": "2026-03-03T12:00:00.000Z",
+    "expiresAt": "2026-03-03T13:00:00.000Z"
+  }
+]
+```
+
+#### Get File Tree
+
+```bash
+curl http://localhost:3000/api/github/workspaces/vercel/next.js/canary/tree
+```
+
+Response:
+```json
+[
+  {
+    "path": "src",
+    "name": "src",
+    "isDirectory": true,
+    "children": [
+      {
+        "path": "src/index.ts",
+        "name": "index.ts",
+        "isDirectory": false,
+        "size": 1024
+      }
+    ]
+  }
+]
+```
+
+#### Read File
+
+```bash
+curl http://localhost:3000/api/github/workspaces/vercel/next.js/canary/files/src/index.ts
+```
+
+Response:
+```typescript
+// File content as plain text
+export { default } from './app';
+```
+
+#### Search Files
+
+```bash
+curl http://localhost:3000/api/github/workspaces/vercel/next.js/canary/search?q=webpack
+```
+
+Response:
+```json
+[
+  {
+    "path": "packages/next/src/build/webpack-config.ts",
+    "name": "webpack-config.ts",
+    "score": 900
+  },
+  {
+    "path": "packages/next/src/build/webpack/loaders/next-loader.ts",
+    "name": "next-loader.ts",
+    "score": 850
+  }
+]
+```
+
+#### Delete Workspace
+
+```bash
+curl -X DELETE http://localhost:3000/api/github/workspaces/vercel/next.js/canary
+```
+
+### Via TypeScript SDK
+
+```typescript
+import { importGitHubRepo } from '@/core/github/github-workspace';
+
+// Import repository
+const workspace = await importGitHubRepo({
+  owner: 'vercel',
+  repo: 'next.js',
+  ref: 'canary',        // Optional: branch/tag/sha (defaults to HEAD)
+  token: 'ghp_...',     // Optional: for private repos
+  maxSizeMB: 200        // Optional: max download size (default: 200MB)
+});
+
+// Get file tree
+const tree = workspace.getTree();
+console.log(`Imported ${workspace.fileCount} files`);
+
+// Read file
+const content = workspace.readFile('src/index.ts');
+console.log(content);
+
+// Check if file exists
+if (workspace.exists('package.json')) {
+  const pkg = workspace.readFile('package.json');
+  console.log(JSON.parse(pkg).name);
+}
+
+// Search files
+const results = workspace.search('webpack', 10);
+results.forEach(r => {
+  console.log(`${r.path} (score: ${r.score})`);
+});
+
+// Clean up
+workspace.dispose();
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash .env
+# GitHub personal access token (for private repos and higher rate limits)
+GITHUB_TOKEN=ghp_...
+
+# Optional: Custom cache directory (default: /tmp/routa-gh)
+# ROUTA_GH_CACHE_DIR=/custom/path
+
+# Optional: Workspace TTL in milliseconds (default: 3600000 = 1 hour)
+# ROUTA_GH_WORKSPACE_TTL=7200000
+```
+
+### Size Limits
+
+```typescript
+const workspace = await importGitHubRepo({
+  owner: 'facebook',
+  repo: 'react',
+  maxSizeMB: 100  // Reject if zipball exceeds 100MB
+});
+```
+
+Default: **200MB**
+
+### Private Repositories
+
+Provide a GitHub personal access token with `repo` scope:
+
+```typescript
+const workspace = await importGitHubRepo({
+  owner: 'myorg',
+  repo: 'private-repo',
+  token: process.env.GITHUB_TOKEN
+});
+```
+
+Without a token:
+- Public repos work fine (subject to rate limits)
+- Private repos return 404
+
+### Ignored Patterns
+
+These directories are automatically excluded from the file tree:
+
+```typescript
+const IGNORE_PATTERNS = [
+  'node_modules',
+  '.git',
+  '.next',
+  'dist',
+  'build',
+  '.cache',
+  'coverage',
+  '.turbo',
+  'target',
+  '__pycache__',
+  '.venv',
+  'venv'
+];
+```
+
+Dotfiles (`.gitignore`, `.env`) are excluded from the tree but can still be read via `readFile()`.
+
+## Use Cases
+
+### Code Review Workflow
+
+Review a pull request without checking out the branch:
+
+```typescript
+// Import PR's head branch
+const workspace = await importGitHubRepo({
+  owner: 'facebook',
+  repo: 'react',
+  ref: 'pull/12345/head',
+  token: process.env.GITHUB_TOKEN
+});
+
+// Read changed files
+const changedFiles = ['src/index.ts', 'src/app.ts'];
+for (const file of changedFiles) {
+  if (workspace.exists(file)) {
+    const content = workspace.readFile(file);
+    // Analyze content
+  }
+}
+
+// Clean up
+workspace.dispose();
+```
+
+### Issue Triage
+
+Enrich GitHub issues with code context:
+
+```typescript
+// Import repo at specific commit
+const workspace = await importGitHubRepo({
+  owner: 'vercel',
+  repo: 'next.js',
+  ref: 'abc1234'  // Commit SHA from issue
+});
+
+// Search for related files
+const results = workspace.search('webpack');
+
+// Add context to issue comment
+const context = results
+  .map(r => `- \`${r.path}\``)
+  .join('\n');
+
+// Post comment via GitHub API
+await postIssueComment(issueId, `Related files:\n${context}`);
+```
+
+### Dependency Analysis
+
+Analyze dependencies without cloning:
+
+```typescript
+const workspace = await importGitHubRepo({
+  owner: 'facebook',
+  repo: 'react',
+  ref: 'main'
+});
+
+if (workspace.exists('package.json')) {
+  const pkg = JSON.parse(workspace.readFile('package.json'));
+  console.log('Dependencies:', pkg.dependencies);
+  console.log('DevDependencies:', pkg.devDependencies);
+}
+```
+
+### Security Scanning
+
+Scan for security issues without executing code:
+
+```typescript
+const workspace = await importGitHubRepo({
+  owner: 'org',
+  repo: 'app',
+  ref: 'main',
+  token: process.env.GITHUB_TOKEN
+});
+
+// Search for potential secrets
+const sensitiveFiles = workspace.search('.env');
+for (const file of sensitiveFiles) {
+  const content = workspace.readFile(file.path);
+  if (content.includes('API_KEY') || content.includes('SECRET')) {
+    console.warn(`⚠️  Potential secret in ${file.path}`);
+  }
+}
+```
+
+### Documentation Generation
+
+Generate docs from source code:
+
+```typescript
+const workspace = await importGitHubRepo({
+  owner: 'vercel',
+  repo: 'next.js',
+  ref: 'canary'
+});
+
+// Find all API routes
+const apiRoutes = workspace.search('route.ts')
+  .filter(r => r.path.includes('app/api'));
+
+// Generate API documentation
+for (const route of apiRoutes) {
+  const content = workspace.readFile(route.path);
+  // Extract JSDoc comments, types, etc.
+}
+```
+
+## Serverless Deployment (Vercel)
+
+GitHub Virtual Workspace is designed for serverless environments:
+
+```typescript
+// Works on Vercel (no persistent file system)
+import { importGitHubRepo } from '@/core/github/github-workspace';
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const owner = searchParams.get('owner');
+  const repo = searchParams.get('repo');
+
+  // Import repo (extracted to /tmp on Lambda/Vercel)
+  const workspace = await importGitHubRepo({ owner, repo });
+
+  // Return file tree
+  return Response.json({
+    fileCount: workspace.fileCount,
+    tree: workspace.getTree()
+  });
+}
+```
+
+**Caveats:**
+- `/tmp` has limited space (~512MB on Lambda, ~500MB on Vercel)
+- Workspaces are not shared across Lambda instances
+- TTL-based cleanup prevents disk exhaustion
+
+## Caching and Cleanup
+
+### In-Memory Cache
+
+Workspaces are cached in a global registry:
+
+```typescript
+import { getCachedWorkspace, cleanupExpired } from '@/core/github/github-workspace';
+
+// Check cache before downloading
+const cached = getCachedWorkspace('vercel', 'next.js', 'canary');
+if (cached) {
+  console.log('Using cached workspace');
+  return cached;
+}
+
+// Import if not cached
+const workspace = await importGitHubRepo({
+  owner: 'vercel',
+  repo: 'next.js',
+  ref: 'canary'
+});
+
+// Manually clean up expired workspaces
+const cleaned = cleanupExpired();
+console.log(`Cleaned up ${cleaned} expired workspaces`);
+```
+
+### TTL Configuration
+
+Default TTL: **1 hour** (3600000ms)
+
+Change via environment variable:
+```bash
+ROUTA_GH_WORKSPACE_TTL=7200000  # 2 hours
+```
+
+Or in code:
+```typescript
+const WORKSPACE_TTL_MS = 60 * 60 * 1000; // 1 hour
+```
+
+### Manual Cleanup
+
+```typescript
+// Clean up specific workspace
+workspace.dispose();
+
+// Clean up all expired workspaces
+import { cleanupExpired } from '@/core/github/github-workspace';
+cleanupExpired();
+
+// List active workspaces
+import { listActiveWorkspaces } from '@/core/github/github-workspace';
+const active = listActiveWorkspaces();
+console.log(`${active.length} active workspaces`);
+```
+
+## Error Handling
+
+```typescript
+import { importGitHubRepo, GitHubWorkspaceError } from '@/core/github/github-workspace';
+
+try {
+  const workspace = await importGitHubRepo({
+    owner: 'invalid',
+    repo: 'repo',
+    token: process.env.GITHUB_TOKEN
+  });
+} catch (error) {
+  if (error instanceof GitHubWorkspaceError) {
+    switch (error.code) {
+      case 'NOT_FOUND':
+        console.error('Repository not found or access denied');
+        break;
+      case 'FORBIDDEN':
+        console.error('Rate limited or forbidden. Check GITHUB_TOKEN.');
+        break;
+      case 'TOO_LARGE':
+        console.error('Repository exceeds size limit');
+        break;
+      case 'DOWNLOAD_FAILED':
+        console.error('Failed to download zipball');
+        break;
+      case 'EXTRACT_FAILED':
+        console.error('Failed to extract archive');
+        break;
+    }
+  }
+}
+```
+
+## Security Considerations
+
+<AccordionGroup>
+  <Accordion title="Path Traversal Protection">
+    All file reads are validated to prevent path traversal:
+
+    ```typescript
+    readFile(filePath: string): string {
+      const absPath = path.resolve(extractedPath, filePath);
+      // Ensure path is within workspace
+      if (!absPath.startsWith(extractedPath + path.sep)) {
+        throw new Error('Path traversal denied');
+      }
+      return fs.readFileSync(absPath, 'utf-8');
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Size Limits">
+    Prevent denial-of-service via large repositories:
+
+    ```typescript
+    const workspace = await importGitHubRepo({
+      owner: 'large-org',
+      repo: 'monorepo',
+      maxSizeMB: 100  // Reject if > 100MB
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Token Handling">
+    - Never log or expose GitHub tokens
+    - Use environment variables, not hardcoded values
+    - Grant minimal scopes (only `repo` for private repos)
+  </Accordion>
+
+  <Accordion title="TTL-Based Cleanup">
+    Workspaces expire after 1 hour to:
+    - Free up disk space
+    - Prevent stale data
+    - Reduce attack surface
+  </Accordion>
+</AccordionGroup>
+
+## Performance Optimization
+
+### File Index Caching
+
+The file tree is built once and reused:
+
+```typescript
+interface FileIndex {
+  tree: VirtualFileEntry[];  // Hierarchical tree
+  paths: string[];           // Flat list for search
+  fileCount: number;
+}
+
+// Built once during import
+const index = buildFileIndex(extractedPath);
+
+// Reused for all operations
+workspace.getTree();    // O(1) - returns cached tree
+workspace.search(query); // O(n) - searches cached paths
+```
+
+### Fuzzy Search Optimization
+
+```typescript
+function fuzzyScore(query: string, target: string, fileName: string): number {
+  if (target === query) return 1000;           // Exact match
+  if (target.includes(query)) {
+    if (fileName.startsWith(query)) return 900; // Filename starts with query
+    if (fileName.includes(query)) return 800;   // Filename contains query
+    return 700;                                 // Path contains query
+  }
+  // Subsequence match (slower, lower score)
+  // ...
+}
+```
+
+### Ignored Patterns
+
+Excluding `node_modules`, `.git`, etc. reduces:
+- Index size (fewer files to search)
+- Extraction time (fewer files to write)
+- Memory usage (smaller tree)
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="404: Repository not found">
+    - Verify owner/repo are correct
+    - Check if repo is private (requires `GITHUB_TOKEN`)
+    - Ensure token has `repo` scope
+  </Accordion>
+
+  <Accordion title="403: Forbidden or rate limited">
+    - Add `GITHUB_TOKEN` to increase rate limits
+    - Use a token with sufficient scopes
+    - Wait for rate limit reset
+  </Accordion>
+
+  <Accordion title="Repository too large">
+    - Increase `maxSizeMB` limit
+    - Import a specific branch/tag instead of default
+    - Exclude large directories (e.g., docs, examples)
+  </Accordion>
+
+  <Accordion title="Extraction fails on serverless">
+    - Check `/tmp` space usage
+    - Reduce `maxSizeMB` limit
+    - Clean up expired workspaces manually
+  </Accordion>
+
+  <Accordion title="File not found after import">
+    - Check if file is in ignored patterns
+    - Verify file exists in the specified ref
+    - Use `workspace.exists()` before `readFile()`
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Custom Specialists" icon="user-gear" href="/guides/custom-specialists">
+    Create code review specialists
+  </Card>
+  <Card title="Workflows" icon="sitemap" href="/guides/workflows">
+    Automate GitHub workspace operations
+  </Card>
+  <Card title="Web Deployment" icon="globe" href="/guides/web-deployment">
+    Deploy on Vercel with GitHub integration
+  </Card>
+  <Card title="GitHub API" icon="book" href="https://docs.github.com/en/rest">
+    GitHub REST API documentation
+  </Card>
+</CardGroup>

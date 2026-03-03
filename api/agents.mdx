@@ -1,0 +1,440 @@
+---
+title: Agent Management
+description: Create and manage AI agents that execute tasks in Routa
+---
+
+## Overview
+
+Agents are AI assistants that execute tasks within workspaces. Each agent has a specific role (ROUTA, CRAFTER, GATE, DEVELOPER) and can be configured with different model tiers for performance optimization.
+
+## Agent Roles
+
+| Role | Description |
+|------|-------------|
+| `ROUTA` | Orchestrator agent that coordinates other agents |
+| `CRAFTER` | Specialized in crafting and refining content |
+| `GATE` | Validation and quality control agent |
+| `DEVELOPER` | Handles development and implementation tasks |
+
+## Model Tiers
+
+| Tier | Description |
+|------|-------------|
+| `SMART` | Most capable models for complex reasoning |
+| `BALANCED` | Balance between capability and speed |
+| `FAST` | Fastest models for simple tasks |
+
+## Agent Status
+
+| Status | Description |
+|--------|-------------|
+| `PENDING` | Agent created but not started |
+| `ACTIVE` | Agent is currently executing |
+| `COMPLETED` | Agent finished successfully |
+| `ERROR` | Agent encountered an error |
+| `CANCELLED` | Agent was manually cancelled |
+
+## List Agents
+
+<CodeGroup>
+```bash cURL
+curl "http://localhost:3000/api/agents?workspaceId=default"
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/agents?workspaceId=default');
+const data = await response.json();
+console.log(data.agents);
+```
+
+```python Python
+import requests
+
+response = requests.get(
+    'http://localhost:3000/api/agents',
+    params={'workspaceId': 'default'}
+)
+agents = response.json()['agents']
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="GET /api/agents" type="GET">
+  List all agents in a workspace or get a single agent by ID
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="workspaceId" type="string" required>
+  The workspace ID to filter agents (defaults to `"default"`)
+</ParamField>
+
+<ParamField query="id" type="string">
+  If provided, returns a single agent instead of a list
+</ParamField>
+
+<ParamField query="summary" type="boolean">
+  If present with `id`, returns agent summary (Next.js only)
+</ParamField>
+
+<ParamField query="role" type="string">
+  Filter by agent role: `ROUTA`, `CRAFTER`, `GATE`, or `DEVELOPER`
+</ParamField>
+
+<ParamField query="status" type="string">
+  Filter by status: `PENDING`, `ACTIVE`, `COMPLETED`, `ERROR`, or `CANCELLED`
+</ParamField>
+
+<ParamField query="parentId" type="string">
+  Filter by parent agent ID
+</ParamField>
+
+### Response
+
+<ResponseField name="agents" type="array">
+  Array of agent objects (when listing)
+</ResponseField>
+
+When querying by ID, returns a single agent object directly.
+
+### Agent Object
+
+<ResponseField name="id" type="string" required>
+  Unique identifier for the agent
+</ResponseField>
+
+<ResponseField name="name" type="string" required>
+  Display name of the agent
+</ResponseField>
+
+<ResponseField name="role" type="string" required>
+  Agent role: `ROUTA`, `CRAFTER`, `GATE`, or `DEVELOPER`
+</ResponseField>
+
+<ResponseField name="modelTier" type="string" required>
+  Model tier: `SMART`, `BALANCED`, or `FAST`
+</ResponseField>
+
+<ResponseField name="workspaceId" type="string" required>
+  ID of the workspace this agent belongs to
+</ResponseField>
+
+<ResponseField name="parentId" type="string">
+  ID of the parent agent (if this is a sub-agent)
+</ResponseField>
+
+<ResponseField name="status" type="string" required>
+  Current status of the agent
+</ResponseField>
+
+<ResponseField name="metadata" type="object" required>
+  Additional metadata as key-value pairs
+</ResponseField>
+
+<ResponseField name="createdAt" type="string" required>
+  ISO 8601 timestamp of creation
+</ResponseField>
+
+<ResponseField name="updatedAt" type="string" required>
+  ISO 8601 timestamp of last update
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "agents": [
+    {
+      "id": "agent-abc123",
+      "name": "Documentation Agent",
+      "role": "DEVELOPER",
+      "modelTier": "BALANCED",
+      "workspaceId": "default",
+      "parentId": null,
+      "status": "ACTIVE",
+      "metadata": {
+        "specialty": "documentation"
+      },
+      "createdAt": "2026-03-03T10:00:00.000Z",
+      "updatedAt": "2026-03-03T10:05:00.000Z"
+    }
+  ]
+}
+```
+
+## Create Agent
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/api/agents \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Documentation Agent",
+    "role": "DEVELOPER",
+    "workspaceId": "default",
+    "modelTier": "BALANCED"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/agents', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    name: 'Documentation Agent',
+    role: 'DEVELOPER',
+    workspaceId: 'default',
+    modelTier: 'BALANCED'
+  })
+});
+const data = await response.json();
+console.log(data.agentId);
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'http://localhost:3000/api/agents',
+    json={
+        'name': 'Documentation Agent',
+        'role': 'DEVELOPER',
+        'workspaceId': 'default',
+        'modelTier': 'BALANCED'
+    }
+)
+result = response.json()
+print(result['agentId'])
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="POST /api/agents" type="POST">
+  Create a new agent
+</ParamField>
+
+### Request Body
+
+<ParamField body="name" type="string" required>
+  Display name for the agent
+</ParamField>
+
+<ParamField body="role" type="string" required>
+  Agent role: `ROUTA`, `CRAFTER`, `GATE`, or `DEVELOPER`
+</ParamField>
+
+<ParamField body="workspaceId" type="string" required>
+  ID of the workspace (defaults to `"default"`)
+</ParamField>
+
+<ParamField body="modelTier" type="string">
+  Model tier: `SMART`, `BALANCED`, or `FAST`
+</ParamField>
+
+<ParamField body="parentId" type="string">
+  ID of the parent agent (for creating sub-agents)
+</ParamField>
+
+### Response
+
+<ResponseField name="agentId" type="string" required>
+  ID of the newly created agent
+</ResponseField>
+
+<ResponseField name="agent" type="object" required>
+  Complete agent object
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "agentId": "agent-abc123",
+  "agent": {
+    "id": "agent-abc123",
+    "name": "Documentation Agent",
+    "role": "DEVELOPER",
+    "modelTier": "BALANCED",
+    "workspaceId": "default",
+    "parentId": null,
+    "status": "PENDING",
+    "metadata": {},
+    "createdAt": "2026-03-03T10:00:00.000Z",
+    "updatedAt": "2026-03-03T10:00:00.000Z"
+  }
+}
+```
+
+## Get Agent by ID
+
+<CodeGroup>
+```bash cURL
+curl http://localhost:3000/api/agents/agent-abc123
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/agents/agent-abc123');
+const agent = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.get('http://localhost:3000/api/agents/agent-abc123')
+agent = response.json()
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="GET /api/agents/{id}" type="GET">
+  Get a single agent by ID (REST-style path parameter)
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The agent ID
+</ParamField>
+
+### Response
+
+Returns a single agent object.
+
+### Status Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| `200` | Success |
+| `404` | Agent not found |
+
+## Delete Agent
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE http://localhost:3000/api/agents/agent-abc123
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/agents/agent-abc123', {
+  method: 'DELETE'
+});
+const result = await response.json();
+console.log(result.deleted); // true
+```
+
+```python Python
+import requests
+
+response = requests.delete('http://localhost:3000/api/agents/agent-abc123')
+result = response.json()
+print(result['deleted'])  # True
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="DELETE /api/agents/{id}" type="DELETE">
+  Delete an agent
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The agent ID to delete
+</ParamField>
+
+### Response
+
+<ResponseField name="deleted" type="boolean" required>
+  Always `true` when successful
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "deleted": true
+}
+```
+
+## Update Agent Status
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:3000/api/agents/agent-abc123/status \
+  -H "Content-Type: application/json" \
+  -d '{"status": "ACTIVE"}'
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:3000/api/agents/agent-abc123/status', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ status: 'ACTIVE' })
+});
+const result = await response.json();
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    'http://localhost:3000/api/agents/agent-abc123/status',
+    json={'status': 'ACTIVE'}
+)
+result = response.json()
+```
+</CodeGroup>
+
+### Endpoint
+
+<ParamField path="POST /api/agents/{id}/status" type="POST">
+  Update an agent's status
+</ParamField>
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The agent ID
+</ParamField>
+
+### Request Body
+
+<ParamField body="status" type="string" required>
+  New status: `PENDING`, `ACTIVE`, `COMPLETED`, `ERROR`, or `CANCELLED`
+</ParamField>
+
+### Response
+
+<ResponseField name="updated" type="boolean" required>
+  Always `true` when successful
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "updated": true
+}
+```
+
+## Error Responses
+
+### 400 Bad Request
+
+```json
+{
+  "error": "workspaceId is required"
+}
+```
+
+### 404 Not Found
+
+```json
+{
+  "error": "Agent not found"
+}
+```

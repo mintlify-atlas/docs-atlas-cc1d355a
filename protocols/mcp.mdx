@@ -1,0 +1,546 @@
+---
+title: 'Model Context Protocol (MCP)'
+description: 'MCP server exposing coordination tools for multi-agent collaboration'
+---
+
+## Overview
+
+The **Model Context Protocol (MCP)** is Routa's primary coordination interface. It exposes specialized tools that enable agents to collaborate on complex tasks through delegation, messaging, and shared state management.
+
+**Key Purpose:** Enable AI agents (Claude Code, OpenCode, Gemini, etc.) to coordinate work across multiple agents without direct implementation details.
+
+**Built on:** [Anthropic's Model Context Protocol](https://modelcontextprotocol.io/)
+
+## When to Use MCP
+
+Use MCP when you need agents to:
+- **Delegate tasks** to other agents (coordinators spawning implementers)
+- **Share context** through notes and conversation history
+- **Track progress** across multiple concurrent tasks
+- **Coordinate workflows** with task dependencies and parallel execution
+
+MCP is ideal for **coordinator agents** (ROUTA role) that orchestrate work across specialized agents.
+
+## Architecture
+
+MCP server is created and configured in `src/core/mcp/routa-mcp-server.ts:39`:
+
+```typescript
+export function createRoutaMcpServer(
+  workspaceIdOrOptions: string | CreateMcpServerOptions,
+  system?: RoutaSystem
+): RoutaMcpServerResult {
+  const server = new McpServer({
+    name: "routa-mcp",
+    version: "0.1.0",
+  });
+
+  const toolManager = new RoutaMcpToolManager(routaSystem.tools, opts.workspaceId);
+  toolManager.setToolMode(toolMode); // "essential" or "full"
+  toolManager.registerTools(server);
+
+  return { server, system: routaSystem, toolManager };
+}
+```
+
+### Tool Modes
+
+MCP supports two tool registration modes:
+
+<ParamField path="toolMode" type="ToolMode" default="essential">
+  Tool registration mode for the MCP server
+  
+  - **`essential`** — 12 core coordination tools (Agent + Note) for weak models
+  - **`full`** — All 34 tools (Task, Agent, Note, Workspace, Git) for stronger models
+</ParamField>
+
+## Available Tools
+
+### Essential Mode (12 tools)
+
+Minimum viable set for multi-agent coordination:
+
+#### Agent Tools (7)
+
+<AccordionGroup>
+  <Accordion title="list_agents" icon="users">
+    List all agents in the workspace with their status and roles.
+    
+    ```typescript
+    // src/core/mcp/routa-mcp-tool-manager.ts:291
+    server.tool(
+      "list_agents",
+      "List all agents in the current workspace with their id, name, role, status, and parentId",
+      {
+        workspaceId: z.string().optional()
+      }
+    );
+    ```
+  </Accordion>
+
+  <Accordion title="read_agent_conversation" icon="comments">
+    Read conversation history of another agent.
+    
+    ```typescript
+    // src/core/mcp/routa-mcp-tool-manager.ts:305
+    {
+      agentId: z.string(),
+      lastN: z.number().optional(),
+      startTurn: z.number().optional(),
+      endTurn: z.number().optional(),
+      includeToolCalls: z.boolean().optional()
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="create_agent" icon="user-plus">
+    Create a new agent with a specific role.
+    
+    ```typescript
+    // src/core/mcp/routa-mcp-tool-manager.ts:323
+    {
+      name: z.string(),
+      role: z.enum(["ROUTA", "CRAFTER", "GATE", "DEVELOPER"]),
+      workspaceId: z.string().optional(),
+      parentId: z.string().optional(),
+      modelTier: z.enum(["SMART", "BALANCED", "FAST"]).optional()
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="set_agent_name" icon="tag">
+    Set your agent's display name to reflect current task.
+    
+    ```typescript
+    // src/core/mcp/routa-mcp-tool-manager.ts:343
+    {
+      name: z.string().describe("Short task-focused name (1-5 words)")
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="delegate_task" icon="hand">
+    Assign a task to an existing agent and activate it.
+    
+    ```typescript
+    // src/core/mcp/routa-mcp-tool-manager.ts:363
+    {
+      agentId: z.string(),
+      taskId: z.string(),
+      callerAgentId: z.string()
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="delegate_task_to_agent" icon="rocket">
+    **Primary delegation tool** — spawns a real agent process.
+    
+    ```typescript
+    // src/core/mcp/routa-mcp-tool-manager.ts:239
+    {
+      taskId: z.string(), // UUID from create_task
+      callerAgentId: z.string(),
+      specialist: z.enum(["CRAFTER", "GATE", "DEVELOPER"]),
+      provider: z.string().optional(),
+      cwd: z.string().optional(),
+      additionalInstructions: z.string().optional(),
+      waitMode: z.enum(["immediate", "after_all"]).optional()
+    }
+    ```
+    
+    **Important:** `taskId` must be a UUID from `create_task`, NOT a task name.
+  </Accordion>
+
+  <Accordion title="send_message_to_agent" icon="message">
+    Send a message from one agent to another.
+    
+    ```typescript
+    // src/core/mcp/routa-mcp-tool-manager.ts:380
+    {
+      fromAgentId: z.string(),
+      toAgentId: z.string(),
+      message: z.string()
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="report_to_parent" icon="file-check">
+    Submit completion report to parent agent.
+    
+    ```typescript
+    // src/core/mcp/routa-mcp-tool-manager.ts:396
+    {
+      agentId: z.string(),
+      taskId: z.string(),
+      summary: z.string(),
+      filesModified: z.array(z.string()).optional(),
+      verificationResults: z.string().optional(),
+      success: z.boolean()
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+#### Note Tools (5)
+
+Shared document management for agent collaboration:
+
+<AccordionGroup>
+  <Accordion title="create_note" icon="file-plus">
+    Create a new note for agent collaboration.
+    
+    ```typescript
+    // src/core/mcp/routa-mcp-tool-manager.ts:527
+    {
+      title: z.string(),
+      content: z.string().optional(),
+      noteId: z.string().optional(),
+      type: z.enum(["spec", "task", "general"]).optional(),
+      workspaceId: z.string().optional(),
+      sessionId: z.string().optional()
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="read_note" icon="file">
+    Read note content. Use `noteId='spec'` for workspace spec.
+    
+    ```typescript
+    // src/core/mcp/routa-mcp-tool-manager.ts:553
+    {
+      noteId: z.string(),
+      workspaceId: z.string().optional()
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="list_notes" icon="list">
+    List all notes, optionally filtered by type.
+    
+    ```typescript
+    // src/core/mcp/routa-mcp-tool-manager.ts:574
+    {
+      type: z.enum(["spec", "task", "general"]).optional(),
+      workspaceId: z.string().optional()
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="set_note_content" icon="edit">
+    Replace note content. Spec note is auto-created if missing.
+    
+    ```typescript
+    // src/core/mcp/routa-mcp-tool-manager.ts:596
+    {
+      noteId: z.string(),
+      content: z.string(),
+      title: z.string().optional(),
+      workspaceId: z.string().optional(),
+      sessionId: z.string().optional()
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="convert_task_blocks" icon="tasks">
+    Convert `@@@task` blocks in notes into structured Task records.
+    
+    ```typescript
+    // src/core/mcp/routa-mcp-tool-manager.ts:666
+    {
+      noteId: z.string(),
+      workspaceId: z.string().optional()
+    }
+    ```
+    
+    Parses markdown blocks like:
+    ```markdown
+    @@@task[task-1]
+    # Task Title
+    Objective: What to achieve
+    Scope: Files to modify
+    Acceptance: Definition of done
+    @@@
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Full Mode (34 tools)
+
+Includes all essential tools plus:
+
+- **Task tools** (4) — `create_task`, `list_tasks`, `update_task_status`, `update_task`
+- **Extended agent tools** (6) — `wake_or_create_task_agent`, `send_message_to_task_agent`, `get_agent_status`, `get_agent_summary`, `subscribe_to_events`, `unsubscribe_from_events`
+- **Extended note tools** (2) — `append_to_note`, `get_my_task`
+- **Workspace tools** (8) — `git_status`, `git_diff`, `git_commit`, `get_workspace_info`, `get_workspace_details`, `set_workspace_title`, `list_workspaces`, `create_workspace`, `list_specialists`
+
+## Configuration Options
+
+<ParamField path="workspaceId" type="string" required>
+  Workspace identifier for all operations
+</ParamField>
+
+<ParamField path="toolMode" type="ToolMode" default="essential">
+  Tool registration mode:
+  - `"essential"` — 12 core tools for weak models
+  - `"full"` — All 34 tools for strong models
+</ParamField>
+
+<ParamField path="system" type="RoutaSystem" optional>
+  Optional existing RoutaSystem instance (auto-created if omitted)
+</ParamField>
+
+<ParamField path="sessionId" type="string" optional>
+  ACP session ID to scope note/task creation to a specific session
+</ParamField>
+
+## Example Usage
+
+### Coordinator Delegating Work
+
+```typescript
+// Coordinator agent using MCP tools
+
+// 1. Create a task
+const taskResult = await mcp.call_tool("create_task", {
+  title: "Implement user authentication",
+  objective: "Add JWT-based authentication to API",
+  workspaceId: "workspace-123",
+  scope: "src/auth/",
+  acceptanceCriteria: [
+    "Login endpoint returns valid JWT",
+    "Protected routes verify token",
+    "Tests pass"
+  ]
+});
+
+const taskId = taskResult.data.taskId;
+
+// 2. Delegate to a CRAFTER agent
+await mcp.call_tool("delegate_task_to_agent", {
+  taskId,
+  callerAgentId: "coordinator-agent-id",
+  specialist: "CRAFTER",
+  provider: "opencode",
+  cwd: "/workspace/project",
+  waitMode: "immediate"
+});
+
+// 3. Read agent conversation later
+const conversation = await mcp.call_tool("read_agent_conversation", {
+  agentId: "crafter-agent-id",
+  lastN: 10
+});
+```
+
+### Spec-Driven Workflow
+
+```typescript
+// 1. Create spec note
+await mcp.call_tool("set_note_content", {
+  noteId: "spec",
+  content: `
+# Project Spec
+
+@@@task[auth]
+Objective: Implement authentication
+Scope: src/auth/
+Acceptance:
+- JWT login works
+- Tests pass
+@@@
+
+@@@task[api]
+Objective: Add REST endpoints
+Scope: src/api/
+Acceptance:
+- CRUD operations work
+- OpenAPI spec generated
+@@@
+  `,
+  workspaceId: "workspace-123"
+});
+
+// 2. Convert @@@task blocks to structured tasks
+const result = await mcp.call_tool("convert_task_blocks", {
+  noteId: "spec",
+  workspaceId: "workspace-123"
+});
+
+// Returns: { taskIds: ["uuid-1", "uuid-2"], noteIds: ["task-auth", "task-api"] }
+
+// 3. Delegate each task
+for (const taskId of result.data.taskIds) {
+  await mcp.call_tool("delegate_task_to_agent", {
+    taskId,
+    callerAgentId: "coordinator-id",
+    specialist: "CRAFTER"
+  });
+}
+```
+
+## Connection Types
+
+MCP server supports multiple transport mechanisms:
+
+### SSE (Server-Sent Events)
+
+For web-based agents (Claude Code):
+
+```typescript
+// src/core/mcp/routa-mcp-http-server.ts
+const httpServer = new RoutaMcpHttpServer({
+  workspaceId: "workspace-123",
+  toolMode: "essential"
+});
+
+await httpServer.start(8080);
+// Agent connects to: http://localhost:8080/api/mcp
+```
+
+### WebSocket
+
+For real-time bidirectional communication:
+
+```typescript
+// src/core/mcp/ws-server-transport.ts
+const transport = new WebSocketServerTransport(ws);
+const { server } = createRoutaMcpServer({
+  workspaceId: "workspace-123",
+  toolMode: "essential"
+});
+
+await server.connect(transport);
+```
+
+### stdio
+
+For local process communication (OpenCode, Codex):
+
+```typescript
+const { server } = createRoutaMcpServer({
+  workspaceId: "workspace-123",
+  toolMode: "essential"
+});
+
+const transport = new StdioServerTransport();
+await server.connect(transport);
+```
+
+## Tool Execution
+
+Tool calls are executed via `src/core/mcp/mcp-tool-executor.ts:30`:
+
+```typescript
+export async function executeMcpTool(
+  tools: AgentTools,
+  name: string,
+  args: Record<string, unknown>,
+  noteTools?: NoteTools,
+  workspaceTools?: WorkspaceTools
+) {
+  // Validate workspaceId
+  const workspace = args.workspaceId as string;
+  if (!workspace) {
+    return { content: [{ type: "text", text: JSON.stringify({ error: "workspaceId is required" }) }], isError: true };
+  }
+
+  // Dispatch to appropriate tool
+  switch (name) {
+    case "list_agents":
+      return formatResult(await tools.listAgents(workspace));
+    case "delegate_task_to_agent":
+      const orchestrator = getRoutaOrchestrator();
+      return formatResult(
+        await orchestrator.delegateTaskWithSpawn({ /* ... */ })
+      );
+    // ...
+  }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Essential Mode for Weak Models" icon="lightbulb">
+    Models with limited context windows (Claude Haiku, GPT-3.5) should use `toolMode: "essential"` to reduce token usage.
+    
+    The 12 essential tools provide full coordination capabilities without overwhelming the model.
+  </Accordion>
+
+  <Accordion title="Always Use UUIDs for Task Delegation" icon="key">
+    **Never** pass task names to `delegate_task_to_agent`. Always use UUIDs returned by `create_task`:
+    
+    ```typescript
+    // WRONG
+    await mcp.call_tool("delegate_task_to_agent", {
+      taskId: "implement-auth", // ❌ Task name
+      // ...
+    });
+    
+    // CORRECT
+    const task = await mcp.call_tool("create_task", { /* ... */ });
+    await mcp.call_tool("delegate_task_to_agent", {
+      taskId: task.data.taskId, // ✅ UUID
+      // ...
+    });
+    ```
+  </Accordion>
+
+  <Accordion title="Use Spec Notes for Complex Workflows" icon="file-code">
+    For multi-task projects, create a spec note with `@@@task` blocks, then convert them:
+    
+    ```typescript
+    // 1. Write spec
+    await mcp.call_tool("set_note_content", {
+      noteId: "spec",
+      content: "# Spec\n@@@task[t1]\n...\n@@@"
+    });
+    
+    // 2. Convert to tasks
+    const result = await mcp.call_tool("convert_task_blocks", {
+      noteId: "spec"
+    });
+    
+    // 3. Delegate all tasks
+    for (const taskId of result.data.taskIds) {
+      await mcp.call_tool("delegate_task_to_agent", { taskId, /* ... */ });
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Report Completion to Parent" icon="check-circle">
+    All child agents **must** call `report_to_parent` when done:
+    
+    ```typescript
+    await mcp.call_tool("report_to_parent", {
+      agentId: "crafter-id",
+      taskId: "task-uuid",
+      summary: "Implemented authentication with JWT",
+      filesModified: ["src/auth/jwt.ts", "src/auth/middleware.ts"],
+      success: true
+    });
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Protocols
+
+- **[ACP (Agent Client Protocol)](/protocols/acp)** — Spawns and manages agent processes
+- **[A2A (Agent-to-Agent)](/protocols/a2a)** — Exposes agents as A2A-compatible tasks for external federation
+
+## API Reference
+
+<CardGroup cols={2}>
+  <Card title="MCP Server" icon="server" href="/api-reference/mcp/server">
+    Create and configure MCP servers
+  </Card>
+  <Card title="Tool Manager" icon="tools" href="/api-reference/mcp/tool-manager">
+    Register and execute coordination tools
+  </Card>
+  <Card title="Agent Tools" icon="users" href="/api-reference/tools/agent-tools">
+    Core agent coordination operations
+  </Card>
+  <Card title="Note Tools" icon="file" href="/api-reference/tools/note-tools">
+    Shared document management
+  </Card>
+</CardGroup>

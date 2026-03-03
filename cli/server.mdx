@@ -1,0 +1,435 @@
+---
+title: Server Command
+description: Run Routa as an HTTP backend server
+---
+
+## Overview
+
+The `routa server` command starts the Routa HTTP backend server, providing REST APIs and WebSocket endpoints for the web UI and external integrations. The server implements the same APIs as the Next.js backend but is built with Rust and Axum for better performance and standalone deployment.
+
+## Usage
+
+```bash
+routa server [OPTIONS]
+```
+
+**Options:**
+
+- `--host <HOST>` - Host to bind to (default: `127.0.0.1`)
+- `--port <PORT>` - Port to listen on (default: `3210`)
+- `--static-dir <PATH>` - Path to static frontend directory (optional)
+
+## Starting the Server
+
+### Basic Usage
+
+Start the server with default settings:
+
+```bash
+routa server
+```
+
+**Output:**
+
+```
+Starting Routa server on 127.0.0.1:3210...
+Routa server listening on http://127.0.0.1:3210
+```
+
+### Custom Host and Port
+
+Bind to a specific host and port:
+
+```bash
+routa server --host 0.0.0.0 --port 8080
+```
+
+**Output:**
+
+```
+Starting Routa server on 0.0.0.0:8080...
+Routa server listening on http://0.0.0.0:8080
+```
+
+### With Static Frontend
+
+Serve static frontend files (Next.js export):
+
+```bash
+routa server --port 3210 --static-dir ./dist
+```
+
+The server will serve:
+- API routes at `/api/*`
+- Static files from the `--static-dir` directory
+- Frontend routes for the web UI
+
+### Custom Database
+
+Use a specific database file:
+
+```bash
+routa --db /path/to/project.db server --port 3210
+```
+
+## Server Endpoints
+
+The Routa server provides several endpoint categories:
+
+### REST APIs
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/health` | Health check endpoint |
+| `POST /api/rpc` | JSON-RPC endpoint for all operations |
+| `GET /api/workspaces` | List workspaces |
+| `POST /api/workspaces` | Create workspace |
+| `GET /api/agents` | List agents |
+| `POST /api/agents` | Create agent |
+| `GET /api/tasks` | List tasks |
+| `POST /api/tasks` | Create task |
+| `GET /api/skills` | List skills |
+
+### Protocol Endpoints
+
+| Endpoint | Protocol | Description |
+|----------|----------|-------------|
+| `GET /api/mcp` | MCP (SSE) | Model Context Protocol for Claude |
+| `POST /api/acp` | ACP (HTTP) | Agent Client Protocol endpoint |
+| `POST /api/a2a` | A2A (HTTP) | Agent-to-Agent protocol |
+
+### WebSocket
+
+| Endpoint | Description |
+|----------|-------------|
+| `WS /api/acp/chat` | Real-time chat for ACP agents |
+| `WS /api/events` | Event stream for UI updates |
+
+## Server Configuration
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ROUTA_DB_PATH` | Database file path | `routa.db` |
+| `RUST_LOG` | Logging level | `info` |
+| `PORT` | Server port (fallback) | `3210` |
+| `HOST` | Server host (fallback) | `127.0.0.1` |
+
+### Logging
+
+Control server logging with `RUST_LOG`:
+
+```bash
+# Debug level for all components
+RUST_LOG=debug routa server
+
+# Info for server, debug for core
+RUST_LOG=routa_server=info,routa_core=debug routa server
+
+# Trace level (very verbose)
+RUST_LOG=trace routa server
+```
+
+## Production Deployment
+
+### Systemd Service
+
+Create a systemd service file:
+
+```ini
+# /etc/systemd/system/routa.service
+[Unit]
+Description=Routa Multi-Agent Coordination Server
+After=network.target
+
+[Service]
+Type=simple
+User=routa
+WorkingDirectory=/opt/routa
+Environment="ROUTA_DB_PATH=/var/lib/routa/routa.db"
+Environment="RUST_LOG=info"
+ExecStart=/usr/local/bin/routa server --host 0.0.0.0 --port 3210 --static-dir /opt/routa/dist
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable routa
+sudo systemctl start routa
+sudo systemctl status routa
+```
+
+### Docker Deployment
+
+Run the server in a Docker container:
+
+```bash
+docker run -d \
+  --name routa-server \
+  -p 3210:3210 \
+  -v /data/routa:/data \
+  -e ROUTA_DB_PATH=/data/routa.db \
+  -e RUST_LOG=info \
+  routa/routa:latest \
+  server --host 0.0.0.0 --port 3210
+```
+
+With Docker Compose:
+
+```yaml
+version: '3.8'
+
+services:
+  routa:
+    image: routa/routa:latest
+    command: server --host 0.0.0.0 --port 3210
+    ports:
+      - "3210:3210"
+    volumes:
+      - routa_data:/data
+    environment:
+      ROUTA_DB_PATH: /data/routa.db
+      RUST_LOG: info
+    restart: unless-stopped
+
+volumes:
+  routa_data:
+```
+
+Start with:
+
+```bash
+docker-compose up -d
+```
+
+### Reverse Proxy (Nginx)
+
+Configure Nginx as a reverse proxy:
+
+```nginx
+upstream routa_backend {
+    server 127.0.0.1:3210;
+}
+
+server {
+    listen 80;
+    server_name routa.example.com;
+
+    # Redirect HTTP to HTTPS
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name routa.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/routa.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/routa.example.com/privkey.pem;
+
+    # Proxy to Routa server
+    location / {
+        proxy_pass http://routa_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket support
+        proxy_read_timeout 86400;
+    }
+
+    # SSE support for MCP
+    location /api/mcp {
+        proxy_pass http://routa_backend;
+        proxy_set_header Connection '';
+        proxy_http_version 1.1;
+        chunked_transfer_encoding off;
+        proxy_buffering off;
+        proxy_cache off;
+    }
+}
+```
+
+## Health Checks
+
+Check server health:
+
+```bash
+curl http://localhost:3210/api/health
+```
+
+**Response:**
+
+```json
+{
+  "status": "ok",
+  "version": "0.1.0",
+  "database": "connected",
+  "timestamp": "2026-03-03T12:00:00Z"
+}
+```
+
+## Monitoring
+
+### Server Logs
+
+View server logs:
+
+```bash
+# If running as systemd service
+sudo journalctl -u routa -f
+
+# If running in Docker
+docker logs -f routa-server
+
+# If running directly
+routa server 2>&1 | tee routa.log
+```
+
+### API Metrics
+
+Monitor API usage:
+
+```bash
+# Request count by endpoint
+grep '"method":' routa.log | \
+  jq -r '.method' | \
+  sort | uniq -c | sort -rn
+
+# Response times
+grep '"duration_ms":' routa.log | \
+  jq -r '.duration_ms' | \
+  awk '{sum+=$1; count+=1} END {print "Avg:", sum/count, "ms"}'
+```
+
+## Testing the Server
+
+### JSON-RPC Request
+
+Test the RPC endpoint:
+
+```bash
+curl -X POST http://localhost:3210/api/rpc \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "agents.list",
+    "params": {"workspaceId": "default"}
+  }'
+```
+
+### WebSocket Connection
+
+Test WebSocket with `wscat`:
+
+```bash
+npm install -g wscat
+
+# Connect to event stream
+wscat -c ws://localhost:3210/api/events
+
+# Connect to ACP chat
+wscat -c ws://localhost:3210/api/acp/chat
+```
+
+### Load Testing
+
+Perform load testing with `wrk`:
+
+```bash
+# Install wrk
+sudo apt-get install wrk  # Ubuntu/Debian
+brew install wrk          # macOS
+
+# Run load test
+wrk -t4 -c100 -d30s --latency http://localhost:3210/api/health
+```
+
+## Stopping the Server
+
+Press `Ctrl+C` to gracefully stop the server:
+
+```
+^C
+Shutting down...
+```
+
+The server will:
+- Close all active connections
+- Flush database writes
+- Clean up resources
+- Exit cleanly
+
+## Comparison with Next.js Server
+
+The Rust server provides the same APIs as the Next.js backend:
+
+| Feature | Rust Server | Next.js Server |
+|---------|-------------|----------------|
+| REST APIs | ✅ Identical | ✅ Reference |
+| JSON-RPC | ✅ Same protocol | ✅ Same protocol |
+| WebSocket | ✅ Native support | ✅ Via ws library |
+| MCP (SSE) | ✅ Native support | ✅ Via SSE |
+| ACP | ✅ Native support | ✅ Via ACP SDK |
+| A2A | ✅ Native support | ✅ Via A2A SDK |
+| Database | SQLite only | SQLite + Postgres |
+| Static files | Optional | Next.js routing |
+| Performance | High (compiled) | Good (JIT) |
+| Memory | Low (~50MB) | Higher (~200MB) |
+| Deployment | Standalone binary | Node.js runtime |
+
+## Troubleshooting
+
+### Port Already in Use
+
+If port 3210 is busy:
+
+```bash
+# Find process using the port
+lsof -i :3210
+
+# Use a different port
+routa server --port 8080
+```
+
+### Database Locked
+
+If you see "database is locked":
+
+```bash
+# Ensure no other Routa instances are running
+pkill routa
+
+# Or use a different database
+routa --db another.db server
+```
+
+### Permission Denied
+
+If binding to port fails:
+
+```bash
+# Use a port > 1024 (non-privileged)
+routa server --port 8080
+
+# Or run with sudo (not recommended)
+sudo routa server --port 80
+```
+
+## Next Steps
+
+- Learn about [REST APIs](/api/overview)
+- Explore [MCP protocol](/protocols/mcp)
+- Configure [ACP agents](/protocols/acp)
+- Set up [A2A federation](/protocols/a2a)
